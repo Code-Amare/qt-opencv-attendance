@@ -1,0 +1,20 @@
+# IDE
+.idea/
+
+# Python virtual environment
+backend/venv/
+
+# Environment variables and secrets
+backend/.env
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+
+# Captured images
+captured-images/
