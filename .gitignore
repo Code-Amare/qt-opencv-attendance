@@ -18,3 +18,7 @@ venv/
 
 # Captured images
 captured-images/
+
+# Models
+gui/models
+gui/face_recognizer.yml
