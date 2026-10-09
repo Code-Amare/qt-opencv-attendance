@@ -48,10 +48,10 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "session",
             "user",
             "status",
-            "recognized_at",
+            "recorded_at",
         ]
         read_only_fields = [
             "id",
             "status",
-            "recognized_at",
+            "recorded_at",
         ]

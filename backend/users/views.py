@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
 
-from .serializers import UserCreateSerializer
+from .serializers import UserCreateSerializer, UserSerializer
 
 User = get_user_model()
 
@@ -37,4 +37,19 @@ class BulkUserCreateView(APIView):
         return Response(
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class UsersListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        users = User.objects.filter().exclude(is_staff=True)
+        if not users:
+            return Response(
+                {"error": "No user found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response(
+            {"users": UserSerializer(users, many=True).data}, status=status.HTTP_200_OK
         )
