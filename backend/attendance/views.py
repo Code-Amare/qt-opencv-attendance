@@ -96,19 +96,6 @@ class CreateSessionView(APIView):
         )
 
 
-class AttendanceListView(APIView):
-    permission_classes = [AllowAny]
-
-    def get(self, request):
-        serializer = AttendanceSessionSerializer(
-            AttendanceSession.objects.all(), many=True
-        )
-
-        if serializer:
-            return Response({"sessions": serializer.data}, status=status.HTTP_200_OK)
-        return Response({"detail": "No attendance found"}, status=status.HTTP_200_OK)
-
-
 class UserAttendanceDetailView(APIView):
     permission_classes = [AllowAny]
 
@@ -127,3 +114,49 @@ class UserAttendanceDetailView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class AttendanceListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, session_id):
+        session = AttendanceSession.objects.filter(id=session_id).first()
+
+        if not session:
+            return  Response({"error": "Invalid session_id"}, status=status.HTTP_200_OK)
+
+        existing = {
+            record.user_id: record
+            for record in Attendance.objects.filter(
+                session=session
+            )
+        }
+
+        users = User.objects.filter(is_active=True).order_by(
+            "id"
+        )
+
+        attendance_list = []
+
+        for user in users:
+            record = existing.get(user.id)
+
+            if record:
+                attendance_status = record.status
+            else:
+                attendance_status = Attendance.Status.ABSENT
+
+            attendance_list.append({
+                "user_id": user.id,
+                "first_name": user.first_name,
+                "status": attendance_status,
+            })
+
+        return Response({
+            "session_id": session.id,
+            "session_name": session.name,
+            "session_status": session.status,
+            "finalized": session.is_ended,
+            "total_users": len(attendance_list),
+            "attendance": attendance_list,
+        })
