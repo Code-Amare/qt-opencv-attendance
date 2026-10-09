@@ -144,7 +144,7 @@ class AttendanceListView(APIView):
             if record:
                 attendance_status = record.status
             else:
-                attendance_status = Attendance.Status.ABSENT
+                attendance_status = None
 
             attendance_list.append({
                 "user_id": user.id,
