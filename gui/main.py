@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
         self.CAMERA_INDEX = 0
         self.STREAK_THRESHOLD = 100
         self.SESSION_ID = 1
-        self.ENABLE_ANTI_SPOOFING = False
+        self.ENABLE_ANTI_SPOOFING = True
 
         self.BASE_URL = "http://127.0.0.1:8000"
         self.RECOGNITION_MAP_URL = f"{self.BASE_URL}/api/users/recognition-map/"
@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.state = {
             "label": None,
             "streak": 0,
-            "confirmed": False,
+            "confirmed": True,
         }
 
         with np.load(self.EMBEDDINGS_PATH) as data:
