@@ -2,6 +2,7 @@ import cv2
 import sys
 import requests
 from ultralytics import YOLO
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QApplication,
     QLabel,
@@ -59,9 +60,15 @@ class MainWindow(QMainWindow):
         # Erro pages
         self.errorLabel = QLabel("Unable to get attendance detail")
 
+        self.errorLabel.setStyleSheet(
+            "color: #2b4efb;"
+            "font-size: 30px;"
+            "font-family: poppins;"
+        )
+
         attendance_list_response = self.get_attendance_list()
         if not attendance_list_response:
-            layout.addWidget(self.errorLabel)
+            layout.addWidget(self.errorLabel, alignment=Qt.AlignCenter)
         else:
             layout.addWidget(self.camera_label)
             self.timer = QTimer(self)
