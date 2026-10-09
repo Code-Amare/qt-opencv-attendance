@@ -27,9 +27,10 @@ class MainWindow(QMainWindow):
 
         # Configuration
         self.CAMERA_INDEX = 0
-        self.MAX_DISTANCE = 45
+        self.MAX_DISTANCE = 60
         self.STREAK_THRESHOLD = 20
         self.SESSION_ID = 1
+        self.ENABLE_ANTI_SPOOFING = False
         self.user_ids = {}
         self.track_states = {}
         self.recorded_users = {}
@@ -53,33 +54,42 @@ class MainWindow(QMainWindow):
 
         central_widget = QWidget()
         layout = QVBoxLayout(central_widget)
-        layout.addWidget(self.camera_label)
         self.setCentralWidget(central_widget)
 
-        self.get_attendance_list()
+        # Erro pages
+        self.errorLabel = QLabel("Unable to get attendance detail")
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.recognize)
-        self.timer.start(30)
+        attendance_list_response = self.get_attendance_list()
+        if not attendance_list_response:
+            layout.addWidget(self.errorLabel)
+        else:
+            layout.addWidget(self.camera_label)
+            self.timer = QTimer(self)
+            self.timer.timeout.connect(self.recognize)
+            self.timer.start(30)
 
     def get_attendance_list(self):
         try:
-            response = requests.get(self.SESSION_URL, timeout=5)
+            response = requests.get(
+                self.SESSION_URL,
+                timeout=5,
+            )
             response.raise_for_status()
 
             data = response.json()
-
             attendance = data.get("attendance")
 
-            if "attendance" not in data:
-                print("Invalid API response: attendance field missing.")
+            if not isinstance(attendance, list):
+                print("Invalid API response: attendance list missing.")
                 return None
+
             self.user_ids = {
                 int(user["user_id"]): user
                 for user in attendance
                 if user.get("user_id") is not None
             }
-            return
+
+            return self.user_ids
 
         except (requests.RequestException, ValueError) as e:
             print(f"Failed to fetch attendance: {e}")
@@ -219,7 +229,7 @@ class MainWindow(QMainWindow):
             left, top, right, bottom = map(int, box)
 
             spoof_label, spoof_confidence = is_face_real(frame, box)
-            if not spoof_label == "Real":
+            if not spoof_label == "Real" and self.ENABLE_ANTI_SPOOFING:
                 cv2.rectangle(
                     processed_image,
                     (left, top),
