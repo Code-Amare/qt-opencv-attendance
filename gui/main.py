@@ -1,10 +1,11 @@
-
 import sys
+import json
 import asyncio
 
 import aiohttp
 import cv2
 import numpy as np
+import requests
 
 from insightface.app import FaceAnalysis
 from PyQt5.QtCore import Qt, QTimer
@@ -19,54 +20,43 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        # Configuration
         self.EMBEDDINGS_PATH = "face_embeddings.npz"
         self.SIMILARITY_THRESHOLD = 0.50
         self.CAMERA_INDEX = 0
-        self.STREAK_THRESHOLD = 20
+        self.STREAK_THRESHOLD = 100
         self.SESSION_ID = 1
         self.ENABLE_ANTI_SPOOFING = False
 
         self.BASE_URL = "http://127.0.0.1:8000"
-        self.SESSION_URL = (
-            f"{self.BASE_URL}/api/attendance/session/{self.SESSION_ID}/"
-        )
+        self.RECOGNITION_MAP_URL = f"{self.BASE_URL}/api/users/recognition-map/"
+        self.SESSION_URL = f"{self.BASE_URL}/api/attendance/session/{self.SESSION_ID}/"
         self.RECORD_ATTENDANCE_URL = f"{self.BASE_URL}/api/attendance/"
 
         self.http_session = None
         self.pending_users = set()
         self.user_ids = {}
+        self.names = {}
         self.recorded_users = {}
 
-        # Consecutive-frame recognition state
         self.state = {
             "label": None,
             "streak": 0,
             "confirmed": False,
         }
 
-        # Load saved ArcFace embeddings
         with np.load(self.EMBEDDINGS_PATH) as data:
             self.known_embeddings = data["embeddings"].astype(np.float32)
             self.known_labels = data["labels"].astype(np.int32)
 
-            # The training script saves names as "ID=Name".
-            self.names = {}
-            if "names" in data:
-                for item in data["names"]:
-                    user_id, name = str(item).split("=", 1)
-                    self.names[int(user_id)] = name
-
         if len(self.known_embeddings) == 0:
             raise ValueError("No face embeddings found in the NPZ file.")
 
-        # Normalize embeddings for cosine similarity.
-        norms = np.linalg.norm(
-            self.known_embeddings, axis=1, keepdims=True
-        )
+        if len(self.known_embeddings) != len(self.known_labels):
+            raise ValueError("The number of embeddings and labels does not match.")
+
+        norms = np.linalg.norm(self.known_embeddings, axis=1, keepdims=True)
         self.known_embeddings /= np.maximum(norms, 1e-12)
 
-        # Initialize InsightFace (ArcFace recognition model).
         self.face_app = FaceAnalysis(
             name="buffalo_l",
             providers=[
@@ -76,7 +66,6 @@ class MainWindow(QMainWindow):
         )
         self.face_app.prepare(ctx_id=0, det_size=(640, 640))
 
-        # Window and camera
         self.setWindowTitle("Face Recognition Attendance System")
         self.setGeometry(0, 0, 1280, 720)
 
@@ -91,28 +80,32 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.camera_label)
         self.setCentralWidget(central_widget)
 
-        # Fetch attendance session users
         attendance_list = self.get_attendance_list()
 
         if attendance_list is None:
-            self.camera_label.setText(
-                "Unable to get attendance details"
-            )
+            self.camera_label.setText("Unable to get attendance details")
             self.camera_label.setAlignment(Qt.AlignCenter)
+
         elif not self.camera.isOpened():
             self.camera_label.setText("Unable to open camera")
             self.camera_label.setAlignment(Qt.AlignCenter)
+
         else:
             self.timer = QTimer(self)
             self.timer.timeout.connect(self.recognize)
             self.timer.start(30)
 
+    def get_status(self, user_id):
+        user = self.recorded_users.get(int(user_id))
+
+        if user is None:
+            return None
+
+        return user.get("status")
+
     def get_attendance_list(self):
         try:
-            response = requests.get(
-                self.SESSION_URL,
-                timeout=5,
-            )
+            response = requests.get(self.SESSION_URL, timeout=5)
             response.raise_for_status()
 
             data = response.json()
@@ -127,11 +120,26 @@ class MainWindow(QMainWindow):
                 for user in attendance
                 if user.get("user_id") is not None
             }
+            self.recorded_users = self.user_ids
+
+            response = requests.get(self.RECOGNITION_MAP_URL, timeout=5)
+            response.raise_for_status()
+
+            users = response.json().get("users", [])
+
+            self.names = {
+                int(user["id"]): user["first_name"]
+                for user in users
+                if user.get("id") is not None
+            }
+
+            print(f"Loaded {len(self.names)} users from recognition map.")
+            print(f"Loaded {len(self.user_ids)} session attendance records.")
 
             return self.user_ids
 
         except (requests.RequestException, ValueError) as e:
-            print(f"Failed to fetch attendance: {e}")
+            print(f"Failed to fetch attendance or recognition map: {e}")
             return None
 
     async def record_attendance(self, user_id):
@@ -148,26 +156,38 @@ class MainWindow(QMainWindow):
                     "session_id": self.SESSION_ID,
                 },
             ) as response:
+                response_text = await response.text()
+
                 if response.status not in (200, 201):
                     print(
                         f"Attendance recording failed: "
-                        f"{response.status} {await response.text()}"
+                        f"{response.status} {response_text}"
                     )
-                    self.state["confirmed"] = False
                     return False
 
-                result = await response.json()
+                try:
+                    result = json.loads(response_text)
+                except ValueError:
+                    print(f"Invalid attendance API response: {response_text}")
+                    return False
+
+            status = result.get("attendance").get("status")
+
+            if status is None:
+                print(f"Attendance API returned no status. Response: {result}")
+                return False
 
             self.recorded_users[user_id] = {
                 "user_id": user_id,
-                "first_name": result.get("first_name", ""),
-                "status": result.get("status"),
+                "first_name": result.get("first_name", self.names.get(user_id, "")),
+                "status": status,
             }
+            print(self.recorded_users)
 
             print(
                 f"Attendance recorded: "
-                f"{result.get('first_name', user_id)} "
-                f"({result.get('status')})"
+                f"{result.get('first_name', self.names.get(user_id, user_id))} "
+                f"({status})"
             )
 
             return True
@@ -178,11 +198,15 @@ class MainWindow(QMainWindow):
             ValueError,
         ) as e:
             print(f"Attendance request failed: {e}")
-            self.state["confirmed"] = False
             return False
 
         finally:
             self.pending_users.discard(user_id)
+
+            if self.state["label"] == user_id:
+                self.state["label"] = None
+                self.state["streak"] = 0
+                self.state["confirmed"] = False
 
     def update_frame(self, frame):
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -197,9 +221,7 @@ class MainWindow(QMainWindow):
             QImage.Format_RGB888,
         )
 
-        self.camera_label.setPixmap(
-            QPixmap.fromImage(image.copy())
-        )
+        self.camera_label.setPixmap(QPixmap.fromImage(image.copy()))
 
     def streak_calculate(self, label):
         state = self.state
@@ -210,6 +232,9 @@ class MainWindow(QMainWindow):
             state["confirmed"] = False
             return None
 
+        if state["confirmed"] and state["label"] == label:
+            return None
+
         if state["label"] != label:
             state["label"] = label
             state["streak"] = 1
@@ -217,24 +242,52 @@ class MainWindow(QMainWindow):
         else:
             state["streak"] += 1
 
-        if (
-            state["streak"] >= self.STREAK_THRESHOLD
-            and not state["confirmed"]
-        ):
+        if state["streak"] >= self.STREAK_THRESHOLD:
             state["confirmed"] = True
             return state["label"]
 
         return None
 
     def is_already_attended(self, user_id):
-        user_id = int(user_id)
+        return self.get_status(user_id) is not None
 
-        if user_id in self.recorded_users:
-            return True
+    def get_status_color(self, status):
+        status = str(status).lower()
 
-        user = self.user_ids.get(user_id)
+        if status == "absent":
+            return (0, 0, 255)
 
-        return user is not None and user.get("status") is not None
+        if status == "late":
+            return (0, 255, 255)
+
+        return (0, 255, 0)
+
+    def draw_face_info(self, frame, box, name, user_id, similarity, color):
+        x1, y1, x2, y2 = box
+
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+
+        display_name = f"{name} (ID: {user_id})" if user_id is not None else name
+
+        cv2.putText(
+            frame,
+            display_name,
+            (x1, max(y1 - 30, 25)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            color,
+            2,
+        )
+
+        cv2.putText(
+            frame,
+            f"Similarity: {similarity:.3f}",
+            (x1, max(y1 - 8, 45)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            color,
+            2,
+        )
 
     def recognize(self):
         success, frame = self.camera.read()
@@ -244,35 +297,26 @@ class MainWindow(QMainWindow):
 
         faces = self.face_app.get(frame)
 
-        # No face: reset the consecutive-frame streak.
         if not faces:
             self.streak_calculate(None)
             self.update_frame(frame)
             return
 
-        # Without tracking, process only the largest face in each frame.
         face = max(
             faces,
-            key=lambda f: (
-                (f.bbox[2] - f.bbox[0])
-                * (f.bbox[3] - f.bbox[1])
-            ),
+            key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
         )
 
         x1, y1, x2, y2 = face.bbox.astype(int)
+        box = (x1, y1, x2, y2)
 
-        # Optional anti-spoofing check.
         if self.ENABLE_ANTI_SPOOFING:
-            spoof_label, spoof_confidence = is_face_real(
-                frame, {x1, y1, x2, y2}
-            )
+            spoof_label, spoof_confidence = is_face_real(frame, [x1, y1, x2, y2])
 
             if spoof_label != "Real":
                 self.streak_calculate(None)
 
-                cv2.rectangle(
-                    frame, (x1, y1), (x2, y2), (0, 0, 255), 2
-                )
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
                 cv2.putText(
                     frame,
                     f"{spoof_label} {spoof_confidence * 100:.1f}%",
@@ -286,10 +330,8 @@ class MainWindow(QMainWindow):
                 self.update_frame(frame)
                 return
 
-        # Extract the normalized ArcFace embedding.
         embedding = face.normed_embedding.astype(np.float32)
 
-        # Compare against all stored embeddings using cosine similarity.
         similarities = self.known_embeddings @ embedding
 
         best_index = int(np.argmax(similarities))
@@ -300,78 +342,74 @@ class MainWindow(QMainWindow):
         color = (0, 0, 255)
 
         if best_similarity >= self.SIMILARITY_THRESHOLD:
-            user_id = int(self.known_labels[best_index])
+            candidate_id = int(self.known_labels[best_index])
 
-            user = self.user_ids.get(user_id, {})
-            name = (
-                user.get("first_name")
-                or self.names.get(user_id)
-                or "Unknown"
+            if candidate_id in self.names and candidate_id in self.recorded_users:
+                user_id = candidate_id
+                name = self.names[user_id]
+                color = (0, 255, 0)
+
+        if user_id is not None and self.is_already_attended(user_id):
+            status = self.get_status(user_id)
+            status_color = self.get_status_color(status)
+
+            self.state["label"] = user_id
+            self.state["streak"] = 0
+            self.state["confirmed"] = True
+
+            self.draw_face_info(frame, box, name, user_id, best_similarity, status_color)
+
+            cv2.putText(
+                frame,
+                f"Status: {status}",
+                (x1, min(y2 + 25, frame.shape[0] - 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                status_color,
+                2,
             )
 
-            color = (0, 255, 0)
+            self.update_frame(frame)
+            return
 
-        # Update recognition streak.
-        confirmed_id = self.streak_calculate(user_id)
+        confirmed_id = None
 
-        # Record attendance only after recognition is confirmed.
+        if user_id is None:
+            self.streak_calculate(None)
+
+        elif user_id in self.pending_users:
+            self.state["label"] = user_id
+            self.state["streak"] = 0
+            self.state["confirmed"] = True
+
+        else:
+            confirmed_id = self.streak_calculate(user_id)
+
         if confirmed_id is not None:
             if (
                 not self.is_already_attended(confirmed_id)
                 and confirmed_id not in self.pending_users
             ):
                 self.pending_users.add(confirmed_id)
+                asyncio.create_task(self.record_attendance(confirmed_id))
 
-                asyncio.create_task(
-                    self.record_attendance(confirmed_id)
-                )
-
-        # Display identity, similarity, and streak.
-        cv2.rectangle(
-            frame, (x1, y1), (x2, y2), color, 2
-        )
-
-        cv2.putText(
-            frame,
-            f"{name} (ID: {user_id})" if user_id is not None else name,
-            (x1, max(y1 - 30, 25)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            color,
-            2,
-        )
-
-        cv2.putText(
-            frame,
-            f"Similarity: {best_similarity:.3f}",
-            (x1, max(y1 - 8, 45)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            color,
-            2,
-        )
+        self.draw_face_info(frame, box, name, user_id, best_similarity, color)
 
         if user_id is not None:
+            if user_id in self.pending_users:
+                status_text = "Recording attendance..."
+            else:
+                status_text = f"Streak: {self.state['streak']}/{self.STREAK_THRESHOLD}"
+
             cv2.putText(
                 frame,
-                f"Streak: {self.state['streak']}/{self.STREAK_THRESHOLD}",
-                (x1, y2 + 25),
+                status_text,
+                (x1, min(y2 + 25, frame.shape[0] - 10)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
                 color,
                 2,
             )
-
-            if self.is_already_attended(user_id):
-                cv2.putText(
-                    frame,
-                    "Attendance recorded",
-                    (x1, y2 + 50),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 255, 0),
-                    2,
-                )
 
         self.update_frame(frame)
 
@@ -388,8 +426,6 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == "__main__":
-    import requests
-
     app = QApplication(sys.argv)
 
     loop = QEventLoop(app)
