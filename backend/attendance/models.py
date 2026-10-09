@@ -77,7 +77,7 @@ class Attendance(models.Model):
         default=Status.PRESENT,
     )
 
-    recognized_at = models.DateTimeField(auto_now_add=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [
@@ -86,7 +86,7 @@ class Attendance(models.Model):
                 name="unique_attendance_per_session",
             )
         ]
-        ordering = ["recognized_at"]
+        ordering = ["recorded_at"]
 
     def __str__(self):
         return f"{self.user} - {self.session}"
