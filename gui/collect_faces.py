@@ -15,11 +15,16 @@ from PyQt5.QtWidgets import (
     QStackedWidget,
     QLabel,
     QPushButton,
-    QMessageBox
+    QMessageBox,
+    QAction,
 )
 from pyqtspinner.spinner import WaitingSpinner
 from PyQt5.QtGui import QColor
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
+from utils import TitleBar, icon_from_svg
+
+class ApiError(Exception):
+    pass
 
 class AuthContext:
     def __init__(self):
@@ -50,25 +55,33 @@ class AuthContext:
 
         self.update_headers(session)
 
-    @asyncSlot()
-    async def login_handler(self, username_or_email, password, session, window):
-        window.show_loader()
+    async def login(self, username_or_email, password, session):
         try:
             async with session.post("users/login/", json={
                 "username_or_email": username_or_email,
-                "password": password
-
+                "password": password,
             }) as resp:
+                try:
+                    data = await resp.json()
+                except aiohttp.ContentTypeError:
+                    data = {}
+                if resp.status >= 400:
+                    return False, data.get("error") or "Login failed"
+        except aiohttp.ClientError:
+            return False, "Server error"
+        self.add_tokens(data, session)
+        return True, ""
+
+    async def refresh_tokens(self, session):
+        try:
+            async with session.post("users/refresh/", json={"refresh": self.refresh}) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
-                self.add_tokens(data, session)
-                window.dashboard()
-        except aiohttp.ClientResponseError as e:
-            print(e.status, e)
-
-        finally:
-            print(data)
-            window.hide_loader()
+        except aiohttp.ClientError:
+            self.logout()
+            return False
+        self.add_tokens(data, session)
+        return True
 
     @asyncSlot()
     async def refresh_tokens(self, session):
@@ -106,34 +119,81 @@ class AuthContext:
             "X-CSRFToken": self.csrf,
         })
 
+class LoginPage(QWidget):
+    login_successful = pyqtSignal()
+
+    def __init__(self, window):
+        super().__init__()
+        self.window_ = window
+        layout = QVBoxLayout(self)
+
+        self.welcome_text = QLabel(f"Welcome to {self.window_.PRODUCT_NAME}")
+
+        self.username_or_email = QLineEdit()
+        self.username_or_email.setPlaceholderText("Username or Email")
+
+        self.password = QLineEdit()
+        self.password.setPlaceholderText("Password")
+
+        self.error_message = QLabel("")
+
+        self.login_btn = QPushButton("Login")
+        self.login_btn.clicked.connect(self.on_login_click)
+        form_layout = QVBoxLayout()
+        for w in (self.username_or_email, self.password, self.error_message, self.login_btn):
+            form_layout.addWidget(w)
+        layout.addWidget(self.welcome_text)
+        layout.addLayout(form_layout)
+
+    @asyncSlot()
+    async def on_login_click(self):
+        self.window_.show_loader()
+        try:
+            ok, msg = await self.window_.auth.login(
+                self.username_or_email.text(), self.password.text(), self.window_.session
+            )
+        finally:
+            self.window_.hide_loader()
+        if ok:
+            self.login_successful()
+        else:
+            self.error_message.setText(msg)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.setWindowFlags(Qt.FramelessWindowHint)
+
         self.closed = asyncio.Event()
 
         self.auth = AuthContext()
         self.session = None
         self.BASE_URL = "http://localhost:8000/api/"
-        self.CHECK_USER_URL = f"{self.BASE_URL}/users/check/"
+        self.CHECK_USER_URL = f"{self.BASE_URL}users/check/"
         self.PRODUCT_NAME = "FaceCall"
 
         self.setGeometry(0, 0, 1280, 720)
-        self.setWindowTitle("Collect Faces")
+        self.setWindowTitle(self.PRODUCT_NAME)
+        self.setWindowIcon(icon_from_svg())
 
         self.initUi()
-
         self.center()
 
     def initUi(self):
         container = QWidget()
+        container.setObjectName("central")
         self.setCentralWidget(container)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
+        # Title bar on top, pages below
+        layout.addWidget(TitleBar(self))
         self.stack = QStackedWidget()
         layout.addWidget(self.stack)
 
+        # Loader overlay
         self.overlay = QWidget(container)
         self.overlay.setObjectName("overlay")
         self.overlay.setAttribute(Qt.WA_StyledBackground, True)
@@ -147,46 +207,40 @@ class MainWindow(QMainWindow):
             color=QColor(191, 0, 255),
         )
 
-        home_page = QWidget()
-        page_layout = QVBoxLayout(home_page)
-        self.username_or_email_line_edit = QLineEdit()
-        self.password_line_edit = QLineEdit()
-        welcome_label = QLabel(f"Welcome to {self.PRODUCT_NAME}")
-        page_layout.addWidget(welcome_label)
-        page_layout.addWidget(self.username_or_email_line_edit)
-        page_layout.addWidget(self.password_line_edit)
-        login_btn = QPushButton("Load")
-        login_btn.clicked.connect(
-            lambda: self.auth.login_handler(
-                        self.username_or_email_line_edit.text(),
-                        self.password_line_edit.text(),
-                        self.session,
-                        self,
-                    )
-            )
-        page_layout.addWidget(login_btn)
-        self.stack.addWidget(home_page)
+        # Pages
+        self.login_page = LoginPage(self)
+        self.login_page.login_successful.connect(self.on_login_successful)
+        self.stack.addWidget(self.login_page)
 
-    def dashboard(self):
-        if not self.auth.isAuthenticated:
-            return
-        dashboard_page = QWidget()
-        dashboard_layout = QVBoxLayout(dashboard_page)
+        self.home_page = QLabel("Logged in!")  # placeholder, replace with your real page
+        self.home_page.setAlignment(Qt.AlignCenter)
+        self.stack.addWidget(self.home_page)
 
-        first_name = QLabel(self.auth.first_name)
-        last_name = QLabel(self.auth.last_name)
-        email = QLabel(self.auth.email)
+        self.stack.setCurrentWidget(self.login_page)
 
-        dashboard_layout.addWidget(first_name)
-        dashboard_layout.addWidget(last_name)
-        dashboard_layout.addWidget(email)
-        self.stack.addWidget(dashboard_page)
-        self.stack.setCurrentWidget(dashboard_page)
+        # Title bar styles live in TitleBar itself
+        self.setStyleSheet("""
+            QMainWindow, QWidget#central { background: #1d1b1e; }
+            QLabel { color: #F8FAFC; font-size: 24px; font-family: poppins}
+            QLineEdit { background: #2f2c31; color: #F8FAFC; border: 1px solid #363138; border-radius: 6px; padding: 8px l6px; font-size: 20px}
+            QPushButton { background: #5d0b9a; color: #fff; border-radius: 6px; padding: 8px; font-size: 18px; font-family: poppins}
+            QPushButton:hover { background: #3f114e; }
+        """)
+
+    def on_login_successful(self):
+        self.stack.setCurrentWidget(self.home_page)
 
     def center(self):
         geo = self.frameGeometry()
         geo.moveCenter(QApplication.primaryScreen().availableGeometry().center())
         self.move(geo.topLeft())
+
+    def _layout_overlay(self):
+        self.overlay.setGeometry(self.centralWidget().rect())
+        self.spinner.move(
+            (self.overlay.width() - self.spinner.width()) // 2,
+            (self.overlay.height() - self.spinner.height()) // 2,
+        )
 
     def show_loader(self):
         blur = QGraphicsBlurEffect()
@@ -195,7 +249,7 @@ class MainWindow(QMainWindow):
         self.stack.setGraphicsEffect(blur)
         self.stack.setEnabled(False)
 
-        self.overlay.setGeometry(self.centralWidget().rect())
+        self._layout_overlay()
         self.overlay.show()
         self.overlay.raise_()
         self.spinner.start()
@@ -205,6 +259,11 @@ class MainWindow(QMainWindow):
         self.overlay.hide()
         self.stack.setGraphicsEffect(None)
         self.stack.setEnabled(True)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.overlay.isVisible():
+            self._layout_overlay()
 
     def closeEvent(self, event):
         self.closed.set()

@@ -14,7 +14,86 @@ from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QVBoxLayout, QWid
 from qasync import QEventLoop, asyncClose
 
 from anti_spoof import is_face_real
+from PyQt5.QtSvg import QSvgRenderer
+from PyQt5.QtGui import QIcon, QPixmap, QPainter
+from PyQt5.QtCore import Qt, QByteArray
 
+def icon_from_svg(svg_text, sizes=(16, 24, 32, 48, 64, 128, 256)):
+    renderer = QSvgRenderer(QByteArray(svg_text.strip().encode("utf-8")))
+    icon = QIcon()
+    for s in sizes:
+        pix = QPixmap(s, s)
+        pix.fill(Qt.transparent)
+        painter = QPainter(pix)
+        renderer.render(painter)
+        painter.end()
+        icon.addPixmap(pix)
+    return icon
+
+svg = """
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Dark Tech Background Gradient -->
+    <linearGradient id="bgGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+
+    <!-- Scan Reticle & Face Glow -->
+    <linearGradient id="cyanCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+
+    <!-- Checkmark Success Green -->
+    <linearGradient id="greenCheck" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <!-- Subtle Drop Shadow -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- App Background (Rounded Square / App Tile) -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#bgGlow)" stroke="#334155" stroke-width="4"/>
+
+  <!-- Camera / Recognition Reticle (Corners) -->
+  <g stroke="url(#cyanCyan)" stroke-width="12" stroke-linecap="round" fill="none">
+    <!-- Top-Left Corner -->
+    <path d="M 120 180 V 140 A 20 20 0 0 1 140 120 H 180" />
+    <!-- Top-Right Corner -->
+    <path d="M 332 120 H 372 A 20 20 0 0 1 392 140 V 180" />
+    <!-- Bottom-Left Corner -->
+    <path d="M 120 332 V 372 A 20 20 0 0 0 140 392 H 180" />
+    <!-- Bottom-Right Corner -->
+    <path d="M 332 392 H 372 A 20 20 0 0 0 392 372 V 332" />
+  </g>
+
+  <!-- Stylized Biometric Face Contour -->
+  <g fill="none" stroke="#F8FAFC" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.95">
+    <!-- Head Outline -->
+    <path d="M 196 220 C 196 160, 316 160, 316 220 C 316 270, 290 310, 256 320 C 222 310, 196 270, 196 220 Z" />
+    <!-- Eyes -->
+    <circle cx="226" cy="215" r="7" fill="#F8FAFC"/>
+    <circle cx="286" cy="215" r="7" fill="#F8FAFC"/>
+    <!-- Nose Line -->
+    <path d="M 256 220 V 245 H 250" stroke-width="8"/>
+    <!-- Subtle Smile / Mouth -->
+    <path d="M 236 270 Q 256 282 276 270" stroke-width="8"/>
+  </g>
+
+  <!-- Anti-Spoofing / Verified Attendance Badge (Bottom Right Checkmark) -->
+  <g filter="url(#glow)">
+    <circle cx="360" cy="360" r="52" fill="url(#greenCheck)" stroke="#0F172A" stroke-width="8"/>
+    <path d="M 336 360 L 352 376 L 384 344" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
+
+"""
 
 class MainWindow(QMainWindow):
     def __init__(self):
