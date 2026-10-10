@@ -1,9 +1,9 @@
-from PyQt5.QtCore import Qt, QByteArray
+from PyQt5.QtCore import Qt, QByteArray, QSize
 from PyQt5.QtGui import QIcon, QPixmap, QPainter
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QWidget, QLabel, QHBoxLayout, QToolButton
 
-APP_ICON_SVG  = """
+APP_ICON_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
   <defs>
     <!-- Dark Tech Background Gradient -->
@@ -65,14 +65,14 @@ APP_ICON_SVG  = """
     <path d="M 336 360 L 352 376 L 384 344" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>
-
 """
 
 TITLEBAR_QSS = """
-#titlebar { background: #3b0762;}
-#titlebar QLabel { color: #F8FAFC; font-weight: semi-bold; }
-#titlebar QToolButton { background: transparent; color: #F8FAFC; border: none; }
+#titlebar { background: #3b0762; }
+#titlebar QLabel { color: #F8FAFC; font-weight: 600; }
+#titlebar QToolButton { background: transparent; border: none; }
 #titlebar QToolButton:hover { background: #334155; }
+#titlebar QToolButton#closeBtn:hover { background: #E81123; }
 """
 
 
@@ -87,6 +87,18 @@ def icon_from_svg(svg_text=APP_ICON_SVG, sizes=(16, 24, 32, 48, 64, 128, 256)):
         painter.end()
         icon.addPixmap(pix)
     return icon
+
+
+def _line_icon(inner, color="#F8FAFC", size=16):
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" '
+           f'fill="none" stroke="{color}" stroke-width="1">{inner}</svg>')
+    return icon_from_svg(svg, sizes=(size, size * 2))
+
+
+ICON_MIN     = '<path d="M1 5.5 H9"/>'
+ICON_MAX     = '<rect x="1.5" y="1.5" width="7" height="7"/>'
+ICON_RESTORE = '<path d="M3 3 V1.5 H8.5 V7 H7"/><rect x="1.5" y="3" width="5.5" height="5.5"/>'
+ICON_CLOSE   = '<path d="M1.5 1.5 L8.5 8.5 M8.5 1.5 L1.5 8.5"/>'
 
 
 class TitleBar(QWidget):
@@ -107,18 +119,28 @@ class TitleBar(QWidget):
         row.addWidget(self.title)
         row.addStretch()
 
-        for text, slot in (("–", window.showMinimized),
-                           ("☐", self.toggle_max),
-                           ("✕", window.close)):
+        def make_btn(icon_inner, slot, name):
             b = QToolButton()
-            b.setText(text)
+            b.setObjectName(name)
+            b.setIcon(_line_icon(icon_inner))
+            b.setIconSize(QSize(14, 14))
             b.setFixedSize(46, height)
             b.clicked.connect(slot)
             row.addWidget(b)
+            return b
+
+        make_btn(ICON_MIN, window.showMinimized, "minBtn")
+        self.max_btn = make_btn(ICON_MAX, self.toggle_max, "maxBtn")
+        make_btn(ICON_CLOSE, window.close, "closeBtn")
 
     def toggle_max(self):
         w = self.window_
-        w.showNormal() if w.isMaximized() else w.showMaximized()
+        if w.isMaximized():
+            w.showNormal()
+            self.max_btn.setIcon(_line_icon(ICON_MAX))
+        else:
+            w.showMaximized()
+            self.max_btn.setIcon(_line_icon(ICON_RESTORE))
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
