@@ -69,7 +69,7 @@ APP_ICON_SVG = """
 
 TITLEBAR_QSS = """
 #titlebar { background: #3b0762; }
-#titlebar QLabel { color: #F8FAFC; font-weight: 600; }
+#titlebar QLabel { color: #F8FAFC; font-weight: 400; }
 #titlebar QToolButton { background: transparent; border: none; }
 #titlebar QToolButton:hover { background: #334155; }
 #titlebar QToolButton#closeBtn:hover { background: #E81123; }
@@ -102,12 +102,12 @@ ICON_CLOSE   = '<path d="M1.5 1.5 L8.5 8.5 M8.5 1.5 L1.5 8.5"/>'
 
 
 class TitleBar(QWidget):
-    def __init__(self, window, height=58):
+    def __init__(self, window):
         super().__init__()
         self.window_ = window
         self.setObjectName("titlebar")
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setFixedHeight(height)
+        self.setFixedHeight(self.window_.TITLE_HEIGHT)
         self.setStyleSheet(TITLEBAR_QSS)
         self._drag = None
 
@@ -124,7 +124,7 @@ class TitleBar(QWidget):
             b.setObjectName(name)
             b.setIcon(_line_icon(icon_inner))
             b.setIconSize(QSize(14, 14))
-            b.setFixedSize(46, height)
+            b.setFixedSize(46, self.window_.TITLE_HEIGHT)
             b.clicked.connect(slot)
             row.addWidget(b)
             return b

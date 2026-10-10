@@ -128,6 +128,8 @@ class LoginPage(QWidget):
         layout = QVBoxLayout(self)
 
         self.welcome_text = QLabel(f"Welcome to {self.window_.PRODUCT_NAME}")
+        self.welcome_text.setAlignment(Qt.AlignCenter)
+        self.welcome_text.setStyleSheet("font-size: 40px; font-weight: 400")
 
         self.username_or_email = QLineEdit()
         self.username_or_email.setPlaceholderText("Username or Email")
@@ -136,14 +138,30 @@ class LoginPage(QWidget):
         self.password.setPlaceholderText("Password")
 
         self.error_message = QLabel("")
+        self.error_message.setStyleSheet("""
+            color: #d20c0c;
+            font-size: 18px;
+        """)
 
         self.login_btn = QPushButton("Login")
         self.login_btn.clicked.connect(self.on_login_click)
-        form_layout = QVBoxLayout()
+        # self.login_btn.
+        form_widget = QWidget()
+        form_widget.setMaximumWidth(560)
+        form_layout = QVBoxLayout(form_widget)
+        form_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.username_or_email.setFixedWidth(360)
+        self.password.setFixedWidth(360)
+        self.login_btn.setFixedWidth(360)
+        self.login_btn.setStyleSheet("margin: 0 0 100px 0")
+        self.login_btn.setCursor(Qt.PointingHandCursor)
+
         for w in (self.username_or_email, self.password, self.error_message, self.login_btn):
             form_layout.addWidget(w)
+
         layout.addWidget(self.welcome_text)
-        layout.addLayout(form_layout)
+        layout.addWidget(form_widget, alignment=Qt.AlignHCenter)
 
     @asyncSlot()
     async def on_login_click(self):
@@ -155,16 +173,22 @@ class LoginPage(QWidget):
         finally:
             self.window_.hide_loader()
         if ok:
-            self.login_successful()
+            self.login_successful.emit()
         else:
             self.error_message.setText(msg)
+
+class DashboardPage(QWidget):
+
+    def __init__(self):
+        super().__init__()
+        
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint)
-
+        self.TITLE_HEIGHT = 48
         self.closed = asyncio.Event()
 
         self.auth = AuthContext()
@@ -197,7 +221,7 @@ class MainWindow(QMainWindow):
         self.overlay = QWidget(container)
         self.overlay.setObjectName("overlay")
         self.overlay.setAttribute(Qt.WA_StyledBackground, True)
-        self.overlay.setStyleSheet("#overlay { background: rgba(255, 255, 255, 120); }")
+        self.overlay.setStyleSheet("#overlay { background: rgba(255, 255, 255, 10); }")
         self.overlay.hide()
 
         self.spinner = WaitingSpinner(
@@ -222,7 +246,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet("""
             QMainWindow, QWidget#central { background: #1d1b1e; }
             QLabel { color: #F8FAFC; font-size: 24px; font-family: poppins}
-            QLineEdit { background: #2f2c31; color: #F8FAFC; border: 1px solid #363138; border-radius: 6px; padding: 8px l6px; font-size: 20px}
+            QLineEdit { background: #2f2c31; color: #F8FAFC; border: 1px solid #363138; border-radius: 6px; padding: 8px 8px 8px 16px; font-size: 20px}
             QPushButton { background: #5d0b9a; color: #fff; border-radius: 6px; padding: 8px; font-size: 18px; font-family: poppins}
             QPushButton:hover { background: #3f114e; }
         """)
@@ -236,7 +260,8 @@ class MainWindow(QMainWindow):
         self.move(geo.topLeft())
 
     def _layout_overlay(self):
-        self.overlay.setGeometry(self.centralWidget().rect())
+        rect = self.centralWidget().rect()
+        self.overlay.setGeometry(0, self.TITLE_HEIGHT, rect.width(), rect.height() - self.TITLE_HEIGHT)
         self.spinner.move(
             (self.overlay.width() - self.spinner.width()) // 2,
             (self.overlay.height() - self.spinner.height()) // 2,
