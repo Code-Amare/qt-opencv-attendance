@@ -3,10 +3,23 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
-
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.middleware.csrf import get_token
 from .serializers import UserCreateSerializer, UserSerializer
 
 User = get_user_model()
+
+def get_tokens_for_user(user, request):
+    refresh = RefreshToken.for_user(user)
+
+    access_token = refresh.access_token
+    csrf_token = get_token(request)
+
+    return {
+        "access": str(access_token),
+        "refresh": str(refresh),
+        "csrf": csrf_token,
+    }
 
 
 class RecognitionMapView(APIView):
@@ -53,3 +66,24 @@ class UsersListView(APIView):
         return Response(
             {"users": UserSerializer(users, many=True).data}, status=status.HTTP_200_OK
         )
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+    def post(self, request):
+        username_or_email = request.data.get("username_or_email", "").strip()
+        password = request.data.get("password", "")
+
+        if not username_or_email or not password:
+            return Response({"error": "Username and Password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(username=username_or_email).first()
+        if not user:
+            user = User.objects.filter(email=username_or_email).first()
+            if not user:
+                return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(password):
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"user": UserSerializer(user).data, "data": get_tokens_for_user(user, request)}, status=status.HTTP_200_OK)
+
