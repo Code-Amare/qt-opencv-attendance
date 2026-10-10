@@ -20,11 +20,86 @@ from pyqtspinner.spinner import WaitingSpinner
 from PyQt5.QtGui import QColor
 from PyQt5.QtCore import Qt
 
+class AuthContext:
+    def __init__(self):
+        self.id = None
+        self.username = ""
+        self.email = ""
+        self.first_name = ""
+        self.last_name = ""
+        self.access = ""
+        self.refresh = ""
+        self.csrf = ""
+
+    def add_tokens(self, data, session):
+        self.access = data["access"]
+        self.refresh = data["refresh"]
+        self.csrf = data["csrf"]
+
+        self.update_headers(session)
+
+    @asyncSlot()
+    async def login_handler(self, username_or_email, password, session, window):
+        window.show_loader()
+        try:
+            async with session.post("users/login/", json={
+                "username_or_email": username_or_email,
+                "password": password
+
+            }) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+                self.add_tokens(data["data"], session)
+        except aiohttp.ClientResponseError as e:
+            print(e.status, e)
+
+        finally:
+            print(data)
+            window.hide_loader()
+
+    @asyncSlot()
+    async def refresh_tokens(self, session):
+        try:
+            async with session.post("users/refresh/", json={"refresh": self.refresh}) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+        except aiohttp.ClientResponseError as e:
+            print(e)
+        finally:
+            self.access = data["access"]
+            self.refresh = data["refresh"]
+
+            self.update_headers(session)
+            print(data)
+
+    def logout(self):
+        self.access = ""
+        self.refresh = ""
+        self.csrf = ""
+
+    def get_user(self):
+        if not self.id:
+            return None
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+        }
+
+    def update_headers(self, session):
+        session.headers.update({
+            "Authorization": f"Bearer {self.access}" if self.access else "",
+            "X-CSRFToken": self.csrf,
+        })
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-
+        self.auth = AuthContext()
         self.session = None
         self.BASE_URL = "http://localhost:8000/api/"
         self.CHECK_USER_URL = f"{self.BASE_URL}/users/check/"
@@ -68,29 +143,16 @@ class MainWindow(QMainWindow):
         page_layout.addWidget(self.username_or_email_line_edit)
         page_layout.addWidget(self.password_line_edit)
         login_btn = QPushButton("Load")
-        login_btn.clicked.connect(self.login_handler)  # call it from a button
+        login_btn.clicked.connect(
+            lambda: self.auth.login_handler(
+                        self.username_or_email_line_edit.text(),
+                        self.password_line_edit.text(),
+                        self.session,
+                        self,
+                    )
+            )
         page_layout.addWidget(login_btn)
         self.stack.addWidget(home_page)
-
-    @asyncSlot()
-    async def login_handler(self):
-        self.show_loader()
-        try:
-            async with self.session.post("users/login/", json={
-                "username_or_email": self.username_or_email_line_edit.text(),
-                "password": self.password_line_edit.text()
-
-            }) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-        except aiohttp.ClientResponseError as e:
-            print(e.status, e)
-
-        finally:
-            self.hide_loader()
-
-
-
 
 
     def center(self):
@@ -129,7 +191,12 @@ async def main(window):
     app_close = asyncio.Event()
     app.aboutToQuit.connect(app_close.set)
 
-    window.session = aiohttp.ClientSession(base_url=window.BASE_URL)
+    window.session = aiohttp.ClientSession(
+        base_url=window.BASE_URL,
+        headers={
+            "Authorization": "",
+            "X-CSRFToken": "",
+        },)
 
     await app_close.wait()          # wait until the app quits
     await window.session.close()
