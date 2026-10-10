@@ -16,9 +16,12 @@ def get_tokens_for_user(user, request):
     csrf_token = get_token(request)
 
     return {
-        "access": str(access_token),
-        "refresh": str(refresh),
-        "csrf": csrf_token,
+        "user": UserSerializer(user).data,
+        "tokens": {
+            "access": str(access_token),
+            "refresh": str(refresh),
+            "csrf": csrf_token,
+        }
     }
 
 
@@ -85,5 +88,5 @@ class LoginView(APIView):
         if not user.check_password(password):
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"user": UserSerializer(user).data, "data": get_tokens_for_user(user, request)}, status=status.HTTP_200_OK)
+        return Response(get_tokens_for_user(user, request), status=status.HTTP_200_OK)
 

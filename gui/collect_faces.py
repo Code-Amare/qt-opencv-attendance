@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QStackedWidget,
     QLabel,
     QPushButton,
+    QMessageBox
 )
 from pyqtspinner.spinner import WaitingSpinner
 from PyQt5.QtGui import QColor
@@ -22,6 +23,7 @@ from PyQt5.QtCore import Qt
 
 class AuthContext:
     def __init__(self):
+
         self.id = None
         self.username = ""
         self.email = ""
@@ -30,11 +32,21 @@ class AuthContext:
         self.access = ""
         self.refresh = ""
         self.csrf = ""
+        self.isAuthenticated = False
 
     def add_tokens(self, data, session):
-        self.access = data["access"]
-        self.refresh = data["refresh"]
-        self.csrf = data["csrf"]
+        tokens = data["tokens"]
+        self.access = tokens["access"]
+        self.refresh = tokens["refresh"]
+        self.csrf = tokens["csrf"]
+        self.isAuthenticated = True
+
+        user = data["user"]  # adjust to match your printout
+        self.id = user["id"]
+        self.username = user["username"]
+        self.email = user["email"]
+        self.first_name = user["first_name"]
+        self.last_name = user["last_name"]
 
         self.update_headers(session)
 
@@ -49,7 +61,8 @@ class AuthContext:
             }) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
-                self.add_tokens(data["data"], session)
+                self.add_tokens(data, session)
+                window.dashboard()
         except aiohttp.ClientResponseError as e:
             print(e.status, e)
 
@@ -65,20 +78,19 @@ class AuthContext:
                 data = await resp.json()
         except aiohttp.ClientResponseError as e:
             print(e)
+            self.logout()
         finally:
-            self.access = data["access"]
-            self.refresh = data["refresh"]
-
-            self.update_headers(session)
+            self.add_tokens(data, session)
             print(data)
 
     def logout(self):
         self.access = ""
         self.refresh = ""
         self.csrf = ""
+        self.isAuthenticated = False
 
     def get_user(self):
-        if not self.id:
+        if not self.isAuthenticated:
             return None
         return {
             "id": self.id,
@@ -98,6 +110,7 @@ class AuthContext:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.closed = asyncio.Event()
 
         self.auth = AuthContext()
         self.session = None
@@ -154,6 +167,21 @@ class MainWindow(QMainWindow):
         page_layout.addWidget(login_btn)
         self.stack.addWidget(home_page)
 
+    def dashboard(self):
+        if not self.auth.isAuthenticated:
+            return
+        dashboard_page = QWidget()
+        dashboard_layout = QVBoxLayout(dashboard_page)
+
+        first_name = QLabel(self.auth.first_name)
+        last_name = QLabel(self.auth.last_name)
+        email = QLabel(self.auth.email)
+
+        dashboard_layout.addWidget(first_name)
+        dashboard_layout.addWidget(last_name)
+        dashboard_layout.addWidget(email)
+        self.stack.addWidget(dashboard_page)
+        self.stack.setCurrentWidget(dashboard_page)
 
     def center(self):
         geo = self.frameGeometry()
@@ -178,14 +206,9 @@ class MainWindow(QMainWindow):
         self.stack.setGraphicsEffect(None)
         self.stack.setEnabled(True)
 
-
-    @asyncSlot()
-    async def start_spinner(self):
-        self.show_loader()
-        try:
-            await asyncio.sleep(4)
-        finally:
-            self.hide_loader()
+    def closeEvent(self, event):
+        self.closed.set()
+        event.accept()
 
 async def main(window):
     app_close = asyncio.Event()
@@ -198,11 +221,12 @@ async def main(window):
             "X-CSRFToken": "",
         },)
 
-    await app_close.wait()          # wait until the app quits
+    await window.closed.wait()      # window was closed
     await window.session.close()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
 
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
@@ -212,4 +236,3 @@ if __name__ == "__main__":
 
     with loop:
         loop.run_until_complete(main(window))
-    sys.exit(app.exec_())
