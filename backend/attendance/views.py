@@ -177,7 +177,18 @@ class AttendanceListView(APIView):
 class UserTableDataView(APIView):
     permission_classes = [AllowAny]
     def get(self, request):
-        users = User.objects.values("id", "email", "first_name", "last_name","face_embeddings")
+        users = User.objects.filter(is_staff=False)
         if not users:
             return Response({"error": "No users found"}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({"users": users}, status=status.HTTP_200_OK)
+
+        users_data = [
+            {
+                "id": user.id,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "face_embeddings": user.has_face,
+            }
+            for user in users
+        ]
+
+        return Response({"users": users_data})

@@ -1,8 +1,9 @@
-import asyncio
+from insightface.app import FaceAnalysis
 import sys
-import os
+import time
+import numpy as np
 import asyncio
-
+import cv2
 import aiohttp
 from qasync import QEventLoop, asyncSlot
 from PyQt5.QtWidgets import (
@@ -17,17 +18,45 @@ from PyQt5.QtWidgets import (
     QLabel,
     QPushButton,
     QMessageBox,
-    QAction,
     QShortcut,
     QTableView,
     QAbstractItemView,
+    QSizePolicy
 )
 from pyqtspinner.spinner import WaitingSpinner
-from PyQt5.QtGui import QColor, QKeySequence
-from PyQt5.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex
+from PyQt5.QtGui import QColor, QKeySequence, QImage, QPixmap
+from PyQt5.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QTimer
 from utils import TitleBar, icon_from_svg, get_image, default_avatar
 
 # Helper Classes
+
+
+async def open_capture(index):
+    """Open the camera in a worker thread so the UI (and spinner) stays responsive."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, cv2.VideoCapture, index)
+
+
+class VideoLabel(QLabel):
+    def __init__(self):
+        super().__init__()
+        self._pixmap = None
+        self.setAlignment(Qt.AlignCenter)
+        self.setMinimumSize(320, 240)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+
+    def set_frame(self, pixmap):
+        self._pixmap = pixmap
+        self._rescale()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._rescale()
+
+    def _rescale(self):
+        if self._pixmap:
+            self.setPixmap(self._pixmap.scaled(
+                self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
 
 # dashboard user table
@@ -265,6 +294,8 @@ class LoginPage(QWidget):
 
 
 class DashboardPage(QWidget):
+    enroll_requested = pyqtSignal(int)
+
     def __init__(self, window):
         super().__init__()
         self.window_ = window
@@ -335,6 +366,9 @@ class DashboardPage(QWidget):
         layout.addWidget(sidebar_widget)
         layout.addWidget(content, 1)
 
+    def on_enroll_clicked(self, user_id):
+        self.enroll_requested.emit(user_id)
+
     async def load_users(self):
         try:
             async with self.window_.session.get(
@@ -366,7 +400,7 @@ class DashboardPage(QWidget):
             btn.setCursor(Qt.PointingHandCursor)
             btn.setStyleSheet("font-size: 16px; padding: 6px 12px;")
 
-        enroll_btn.clicked.connect(lambda _, u=user: self.on_enroll_face(u))
+        enroll_btn.clicked.connect(lambda _, uid=user["id"]: self.on_enroll_clicked(uid))
         edit_btn.clicked.connect(lambda _, u=user: self.on_edit_user(u))
 
         w = QWidget()
@@ -400,15 +434,274 @@ class DashboardPage(QWidget):
         )
 
 
+class EnrollFaceEmbeddingPage(QWidget):
+    back_requested = pyqtSignal()
+    buffer_full = pyqtSignal()
+
+    def __init__(self, window):
+        super().__init__()
+        self.window_ = window
+        self.user_id = None
+        self.cap = None
+
+        self.buffer = []  # list of face crops (BGR images)
+        self.embeddings = []  # one embedding per captured face
+        self.embedding = None
+        self.MAX_BUFFER = 15
+        self.CAPTURE_INTERVAL = 0.3  # seconds between captures
+        self.MIN_DET_SCORE = 0.7
+        self.MIN_FACE_SIZE = 120  # px, width of the face box
+        self._last_capture = 0.0
+
+        self.camera_label = VideoLabel()
+        self.camera_label.setMinimumSize(640, 480)
+        self.camera_label.setAlignment(Qt.AlignCenter)
+
+        self.back_btn = QPushButton("Back")
+        self.back_btn.clicked.connect(self.back_requested.emit)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.back_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(self.camera_label)
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.cam_feed)
+
+    def is_good_face(self, face):
+        x1, y1, x2, y2 = face.bbox
+        return face.det_score >= self.MIN_DET_SCORE and (x2 - x1) >= self.MIN_FACE_SIZE
+
+    def try_capture(self, frame, face):
+        now = time.monotonic()
+        if len(self.buffer) >= self.MAX_BUFFER:
+            return
+        if now - self._last_capture < self.CAPTURE_INTERVAL:
+            return
+        if not self.is_good_face(face):
+            return
+
+        x1, y1, x2, y2 = face.bbox.astype(int)
+        pad = int((x2 - x1) * 0.2)  # a little margin around the face
+        h, w = frame.shape[:2]
+        crop = frame[max(y1 - pad, 0):min(y2 + pad, h), max(x1 - pad, 0):min(x2 + pad, w)]
+
+        self.buffer.append(crop.copy())
+        self.embeddings.append(face.normed_embedding.copy())
+        self._last_capture = now
+
+    def detect_face(self, frame):
+        faces = self.window_.face_app.get(frame)
+        if not faces:
+            return None
+
+        return max(
+            faces,
+            key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
+        )
+
+    def set_user(self, user_id):
+        self.user_id = user_id
+        self.clear_buffer()
+
+    async def start_camera(self):
+        self.cap = await open_capture(self.window_.CAMERA_INDEX)
+        if not self.cap.isOpened():
+            self.camera_label.setText("Unable to open camera")
+            return False
+        self.timer.start(30)
+        return True
+
+    def stop_camera(self):
+        self.timer.stop()
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+
+    def cam_feed(self):
+        if self.cap is None:
+            return None
+        success, frame = self.cap.read()
+        if not success:
+            return None
+        face = self.detect_face(frame)
+        display = frame.copy()  # draw on a copy, keep the original frame clean
+
+        if face is not None:
+            self.try_capture(frame, face)
+            x1, y1, x2, y2 = face.bbox.astype(int)
+            color = (0, 255, 0) if self.is_good_face(face) else (0, 165, 255)  # orange = not good enough
+            cv2.rectangle(display, (x1, y1), (x2, y2), color, 2)
+
+        cv2.putText(display, f"Captured: {len(self.buffer)}/{self.MAX_BUFFER}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+        self.update_frame(display)
+        if len(self.buffer) >= self.MAX_BUFFER:
+            self.stop_camera()
+            self.buffer_full.emit()
+        return frame
+
+    def update_frame(self, frame):
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb.shape
+        image = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
+        self.camera_label.set_frame(QPixmap.fromImage(image.copy()))
+
+    def clear_buffer(self):
+        self.buffer.clear()
+        self.embeddings.clear()
+        self.embedding = None
+        self._last_capture = 0.0
+
+    def build_embedding(self):
+        mean = np.mean(self.embeddings, axis=0)
+        self.embedding = mean / np.linalg.norm(mean)
+        return self.embedding
+
+
+class DetectionCheckPage(QWidget):
+    back_requested = pyqtSignal()
+    check_requested = pyqtSignal()
+
+    def __init__(self, window):
+        super().__init__()
+        self.window_ = window
+
+        self.image_label = VideoLabel()
+        self.image_label.setMinimumSize(640, 480)
+
+        self.back_btn = QPushButton("Retake")
+        self.back_btn.clicked.connect(self.back_requested.emit)
+
+        self.check_btn = QPushButton("Check Detection")
+        self.check_btn.clicked.connect(self.check_requested.emit)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.back_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(self.image_label)
+        layout.addWidget(self.check_btn, alignment=Qt.AlignCenter)
+
+    def set_image(self, frame):
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb.shape
+        image = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
+        self.image_label.set_frame(QPixmap.fromImage(image.copy()))
+
+
+class CheckEmbeddingPage(QWidget):
+    back_requested = pyqtSignal()
+    approved = pyqtSignal()
+
+    def __init__(self, window):
+        super().__init__()
+        self.window_ = window
+        self.embedding = None
+        self.cap = None
+        self.streak = 0
+        self.verified = False
+
+        self.camera_label = VideoLabel()
+        self.camera_label.setMinimumSize(640, 480)
+
+        self.status_label = QLabel("Look at the camera")
+        self.status_label.setAlignment(Qt.AlignCenter)
+
+        self.back_btn = QPushButton("Back")
+        self.back_btn.clicked.connect(self.back_requested.emit)
+
+        self.approve_btn = QPushButton("Approve & Save")
+        self.approve_btn.setEnabled(False)
+        self.approve_btn.clicked.connect(self.approved.emit)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.back_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(self.camera_label)
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.approve_btn, alignment=Qt.AlignCenter)
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.cam_feed)
+
+    def set_embedding(self, embedding):
+        self.embedding = embedding
+        self.streak = 0
+        self.verified = False
+        self.approve_btn.setEnabled(False)
+        self.status_label.setText("Look at the camera")
+
+    async def start_camera(self):
+        self.cap = await open_capture(self.window_.CAMERA_INDEX)
+        if not self.cap.isOpened():
+            self.camera_label.setText("Unable to open camera")
+            return False
+        self.timer.start(30)
+        return True
+
+    def stop_camera(self):
+        self.timer.stop()
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+
+    def cam_feed(self):
+        if self.cap is None:
+            return
+        success, frame = self.cap.read()
+        if not success:
+            return
+
+        display = frame.copy()
+        faces = self.window_.face_app.get(frame)
+
+        if faces:
+            face = max(
+                faces,
+                key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
+            )
+            # both vectors are normalized, so the dot product is the cosine similarity
+            sim = float(np.dot(self.embedding, face.normed_embedding))
+            matched = sim >= self.window_.SIMILARITY_THRESHOLD
+            self.streak = self.streak + 1 if matched else 0
+
+            color = (0, 255, 0) if matched else (0, 0, 255)
+            x1, y1, x2, y2 = face.bbox.astype(int)
+            cv2.rectangle(display, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(display, f"Similarity: {sim:.3f}", (x1, max(y1 - 10, 25)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        else:
+            self.streak = 0
+
+        needed = self.window_.STREAK_THRESHOLD
+        if self.streak >= needed:
+            self.verified = True  # stays verified once reached
+        if self.verified:
+            self.status_label.setText("Face verified")
+            self.approve_btn.setEnabled(True)
+        else:
+            self.status_label.setText(f"Matching: {self.streak}/{needed}")
+
+        self.update_frame(display)
+
+    def update_frame(self, frame):
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb.shape
+        image = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
+        self.camera_label.set_frame(QPixmap.fromImage(image.copy()))
+
+
 # Main Window
-
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.TITLE_HEIGHT = 48
         self.closed = asyncio.Event()
+
+        self.face_app = FaceAnalysis(
+            name="buffalo_l",
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+        self.face_app.prepare(ctx_id=0, det_size=(640, 640))
 
         self.auth = AuthContext()
         self.session = None
@@ -416,6 +709,10 @@ class MainWindow(QMainWindow):
         self.CHECK_USER_URL = f"{self.BASE_URL}users/check/"
         self.PRODUCT_NAME = "FaceCall"
         self.USERS_TABLE_DATA_URL = "attendance/data/table"
+        self.SIMILARITY_THRESHOLD = 0.50
+        self.CAMERA_INDEX = 1
+        self.STREAK_THRESHOLD = 20
+        self.ENABLE_ANTI_SPOOFING = False
 
         self.setGeometry(0, 0, 1280, 720)
         self.setWindowTitle(self.PRODUCT_NAME)
@@ -459,11 +756,30 @@ class MainWindow(QMainWindow):
         # Pages
         self.login_page = LoginPage(self)
         self.dashboard_page = DashboardPage(self)
+        self.enroll_page = EnrollFaceEmbeddingPage(self)
+        self.check_page = DetectionCheckPage(self)
+        self.check_embedding_page = CheckEmbeddingPage(self)
 
         self.stack.addWidget(self.login_page)
         self.stack.addWidget(self.dashboard_page)
+        self.stack.addWidget(self.enroll_page)
+        self.stack.addWidget(self.check_page)
+        self.stack.addWidget(self.check_embedding_page)
 
+        # Navigation
         self.login_page.login_successful.connect(self.on_login_successful)
+        self.dashboard_page.enroll_requested.connect(self.open_enroll_page)
+
+        self.enroll_page.back_requested.connect(self.close_enroll_page)
+        self.enroll_page.buffer_full.connect(self.on_buffer_full)
+
+        self.check_page.back_requested.connect(
+            lambda: self.open_enroll_page(self.enroll_page.user_id)
+        )
+        self.check_page.check_requested.connect(self.open_check_embedding)
+
+        self.check_embedding_page.back_requested.connect(self.close_check_embedding)
+        self.check_embedding_page.approved.connect(self.on_approved)
 
         # Title bar styles live in TitleBar itself
         self.setStyleSheet("""
@@ -472,8 +788,88 @@ class MainWindow(QMainWindow):
             QLineEdit { background: #2f2c31; color: #F8FAFC; border: 1px solid #363138; border-radius: 6px; padding: 8px 8px 8px 16px; font-size: 20px}
             QPushButton { background: #5d0b9a; color: #fff; border-radius: 6px; padding: 8px; font-size: 18px; font-family: poppins}
             QPushButton:hover { background: #3f114e; }
+            QPushButton:disabled { background: #3a3540; color: #8a8590; }
         """)
 
+    # ---- enroll flow ----
+    @asyncSlot(int)
+    async def open_enroll_page(self, user_id):
+        self.enroll_page.set_user(user_id)
+        self.show_loader()
+        try:
+            await self.enroll_page.start_camera()
+        finally:
+            self.hide_loader()
+        self.stack.setCurrentWidget(self.enroll_page)
+
+    def close_enroll_page(self):
+        self.enroll_page.stop_camera()
+        self.stack.setCurrentWidget(self.dashboard_page)
+
+    @asyncSlot()
+    async def on_buffer_full(self):
+        self.show_loader()
+        try:
+            self.enroll_page.build_embedding()
+        finally:
+            self.hide_loader()
+        self.check_page.set_image(self.enroll_page.buffer[-1])
+        self.stack.setCurrentWidget(self.check_page)
+
+    @asyncSlot()
+    async def open_check_embedding(self):
+        self.check_embedding_page.set_embedding(self.enroll_page.embedding)
+        self.show_loader()
+        try:
+            await self.check_embedding_page.start_camera()
+        finally:
+            self.hide_loader()
+        self.stack.setCurrentWidget(self.check_embedding_page)
+
+    def close_check_embedding(self):
+        self.check_embedding_page.stop_camera()
+        self.stack.setCurrentWidget(self.check_page)
+
+    # ---- save ----
+    async def save_embedding(self, user_id, embedding):
+        try:
+            async with self.session.post(
+                f"users/face-embedding/add/{user_id}/",
+                json={"face_embedding": embedding.tolist()},
+            ) as resp:
+                try:
+                    data = await resp.json()
+                except aiohttp.ContentTypeError:
+                    data = {}
+                if resp.status >= 400:
+                    msg = data.get("error") or data.get("detail") or f"Save failed ({resp.status})"
+                    return False, msg
+        except aiohttp.ClientError:
+            return False, "Server error"
+        return True, ""
+
+    @asyncSlot()
+    async def on_approved(self):
+        user_id = self.enroll_page.user_id
+        embedding = self.enroll_page.embedding
+
+        self.show_loader()
+        try:
+            ok, msg = await self.save_embedding(user_id, embedding)
+            if ok:
+                await self.dashboard_page.load_users()  # row flips to "Enrolled"
+        finally:
+            self.hide_loader()
+
+        if ok:
+            self.check_embedding_page.stop_camera()
+            self.enroll_page.clear_buffer()
+            self.stack.setCurrentWidget(self.dashboard_page)
+            QMessageBox.information(self, "Face Enrollment", "Face embedding saved.")
+        else:
+            QMessageBox.warning(self, "Face Enrollment", msg)
+
+    # ---- login ----
     @asyncSlot()
     async def on_login_successful(self):
         self.show_loader()
@@ -522,6 +918,8 @@ class MainWindow(QMainWindow):
             self._layout_overlay()
 
     def closeEvent(self, event):
+        self.enroll_page.stop_camera()
+        self.check_embedding_page.stop_camera()
         self.closed.set()
         event.accept()
 
