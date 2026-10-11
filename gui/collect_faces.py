@@ -19,6 +19,8 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QAction,
     QShortcut,
+    QTableView,
+    QAbstractItemView,
 )
 from pyqtspinner.spinner import WaitingSpinner
 from PyQt5.QtGui import QColor, QKeySequence
@@ -27,56 +29,59 @@ from utils import TitleBar, icon_from_svg, get_image, default_avatar
 
 # Helper Classes
 
+
 # dashboard user table
 class UserModel(QAbstractTableModel):
     HEADERS = ["Id", "First Name", "Last Name", "Face Status", "Actions"]
-    def __init__(self, window):
+
+    def __init__(self):
         super().__init__()
-        self.window_ = window
-        self._users:list[dict] = []
+        self._users: list[dict] = []
 
-    def set_users(self, users):
-        self._users = users
-
-    def rowCount(self, parent =QModelIndex()):
+    def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._users)
 
-    def columnCount(self, parent = QModelIndex()):
+    def columnCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.HEADERS)
 
-    def headerData(self, section, orientation, role = Qt.DisplayRole):
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return self.HEADERS
+            return self.HEADERS[section]
 
-    async def load_users_data(self):
-        self.window_.show_loader()
-        try:
-            async with self.window_.session.get(self.window_.USERS_DATA) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-        except ApiError as e:
-            print(e)
-        except aiohttp.ClientResponseError as e:
-            print(e)
-        finally:
-            self.window_.hide_loader()
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid():
+            return None
+        user = self._users[index.row()]
+        col = index.column()
 
+        if role == Qt.DisplayRole:
+            if col == 0:
+                return user["id"]
+            if col == 1:
+                return user["first_name"]
+            if col == 2:
+                return user["last_name"]
+            if col == 3:
+                return "Enrolled" if user.get("face_embeddings") else "Not enrolled"
+            return ""
 
+        if role == Qt.TextAlignmentRole:
+            return int(Qt.AlignCenter)
 
+        return None
 
-    def update_users(self, users):
+    def set_users(self, users):
         self.beginResetModel()
         self._users = users
         self.endResetModel()
 
-
-
-
-
+    def user_at(self, row):
+        return self._users[row]
 
 
 class ApiError(Exception):
     pass
+
 
 class AuthContext:
     def __init__(self):
@@ -92,7 +97,6 @@ class AuthContext:
         self.isAuthenticated = False
         self.profile_pic_url = ""
         self.profile_pic = None
-
 
     async def get_profile_pic(self):
         pix = None
@@ -119,10 +123,13 @@ class AuthContext:
 
     async def login(self, username_or_email, password, session):
         try:
-            async with session.post("users/login/", json={
-                "username_or_email": username_or_email,
-                "password": password,
-            }) as resp:
+            async with session.post(
+                "users/login/",
+                json={
+                    "username_or_email": username_or_email,
+                    "password": password,
+                },
+            ) as resp:
                 try:
                     data = await resp.json()
                 except aiohttp.ContentTypeError:
@@ -136,7 +143,9 @@ class AuthContext:
 
     async def refresh_tokens(self, session):
         try:
-            async with session.post("users/refresh/", json={"refresh": self.refresh}) as resp:
+            async with session.post(
+                "users/refresh/", json={"refresh": self.refresh}
+            ) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
         except aiohttp.ClientError:
@@ -148,7 +157,9 @@ class AuthContext:
     @asyncSlot()
     async def refresh_tokens(self, session):
         try:
-            async with session.post("users/refresh/", json={"refresh": self.refresh}) as resp:
+            async with session.post(
+                "users/refresh/", json={"refresh": self.refresh}
+            ) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
         except aiohttp.ClientResponseError as e:
@@ -176,10 +187,13 @@ class AuthContext:
         }
 
     def update_headers(self, session):
-        session.headers.update({
-            "Authorization": f"Bearer {self.access}" if self.access else "",
-            "X-CSRFToken": self.csrf,
-        })
+        session.headers.update(
+            {
+                "Authorization": f"Bearer {self.access}" if self.access else "",
+                "X-CSRFToken": self.csrf,
+            }
+        )
+
 
 class LoginPage(QWidget):
     login_successful = pyqtSignal()
@@ -222,7 +236,12 @@ class LoginPage(QWidget):
         self.login_btn.setStyleSheet("margin: 0 0 100px 0")
         self.login_btn.setCursor(Qt.PointingHandCursor)
 
-        for w in (self.username_or_email, self.password, self.error_message, self.login_btn):
+        for w in (
+            self.username_or_email,
+            self.password,
+            self.error_message,
+            self.login_btn,
+        ):
             form_layout.addWidget(w)
 
         layout.addWidget(self.welcome_text)
@@ -233,7 +252,9 @@ class LoginPage(QWidget):
         self.window_.show_loader()
         try:
             ok, msg = await self.window_.auth.login(
-                self.username_or_email.text(), self.password.text(), self.window_.session
+                self.username_or_email.text(),
+                self.password.text(),
+                self.window_.session,
             )
         finally:
             self.window_.hide_loader()
@@ -242,42 +263,90 @@ class LoginPage(QWidget):
         else:
             self.error_message.setText(msg)
 
-class DashboardPage(QWidget):
 
+class DashboardPage(QWidget):
     def __init__(self, window):
         super().__init__()
-
         self.window_ = window
-
         self.initUi()
 
     def initUi(self):
-
         layout = QHBoxLayout(self)
+
+        # Sidebar
         sidebar_widget = QWidget()
         sidebar_layout = QVBoxLayout(sidebar_widget)
-        nav_widget = QWidget()
-        nav_layout = QHBoxLayout(nav_widget)
-
-        self.nav_welcome_label = QLabel("")
-        self.avatar = QLabel()
-        self.avatar.setFixedSize(48, 48)
-        self.avatar.setScaledContents(True)
-
         self.sidebar_dashboard_btn = QPushButton("Dashboard")
         self.sidebar_enrolled_faces_btn = QPushButton("Enrolled Faces")
-
         sidebar_layout.addWidget(self.sidebar_dashboard_btn)
         sidebar_layout.addWidget(self.sidebar_enrolled_faces_btn)
         sidebar_layout.addStretch()
 
+        # Top nav
+        nav_widget = QWidget()
+        nav_layout = QHBoxLayout(nav_widget)
+        self.nav_welcome_label = QLabel("")
+        self.avatar = QLabel()
+        self.avatar.setFixedSize(48, 48)
+        self.avatar.setScaledContents(True)
         nav_layout.addWidget(self.nav_welcome_label)
         nav_layout.addStretch()
         nav_layout.addWidget(self.avatar)
 
+        # Table
+        self.table_model = UserModel()
+        self.table = QTableView()
+        self.table.setModel(self.table_model)
+        self.table.verticalHeader().hide()
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.verticalHeader().setDefaultSectionSize(56)
+        self.table.setAlternatingRowColors(True)
+        self.table.viewport().setCursor(Qt.PointingHandCursor)
+        self.table.setStyleSheet("""
+            QTableView { 
+                background: #2f2c31; 
+                alternate-background-color: #26232a;
+                color: #F8FAFC; 
+                font-size: 18px;
+                gridline-color: #363138; 
+                border: none; 
+            }
+            QTableView::item:selected { 
+                background: #5d0b9a; 
+            }
+            QTableView::item:hover    { background: #3a3540; }
+            QHeaderView::section { 
+                background: #1d1b1e; 
+                color: #F8FAFC;
+                padding: 8px; 
+                border: none; 
+                font-size: 18px; 
+            }
+        """)
+
+        # Right-hand content column
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.addWidget(nav_widget)
+        content_layout.addWidget(self.table)
+
         layout.addWidget(sidebar_widget)
-        layout.addWidget(nav_widget)
-        layout.addStretch()  # the rest of the dashboard goes here
+        layout.addWidget(content, 1)
+
+    async def load_users(self):
+        try:
+            async with self.window_.session.get(
+                self.window_.USERS_TABLE_DATA_URL
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+        except aiohttp.ClientError as e:
+            print(f"Failed to load users: {e}")
+            return
+        self.table_model.set_users(data["users"])
+        self.populate_actions()
 
     async def refresh(self):
         auth = self.window_.auth
@@ -286,8 +355,53 @@ class DashboardPage(QWidget):
         self.nav_welcome_label.setText(f"Welcome, {auth.first_name}")
         self.avatar.setPixmap(auth.profile_pic)
 
+        await self.load_users()
+
+    def make_actions_widget(self, user):
+        has_face = bool(user.get("face_embeddings"))
+
+        enroll_btn = QPushButton("Re-enroll Face" if has_face else "Enroll Face")
+        edit_btn = QPushButton("Edit")
+        for btn in (enroll_btn, edit_btn):
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("font-size: 16px; padding: 6px 12px;")
+
+        enroll_btn.clicked.connect(lambda _, u=user: self.on_enroll_face(u))
+        edit_btn.clicked.connect(lambda _, u=user: self.on_edit_user(u))
+
+        w = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(8, 4, 8, 4)
+        lay.setSpacing(8)
+        lay.setAlignment(Qt.AlignCenter)
+        lay.addWidget(enroll_btn)
+        lay.addWidget(edit_btn)
+        return w
+
+    def populate_actions(self):
+        for row in range(self.table_model.rowCount()):
+            user = self.table_model.user_at(row)
+            self.table.setIndexWidget(
+                self.table_model.index(row, 4), self.make_actions_widget(user)
+            )
+
+    def on_enroll_face(self, user):
+        QMessageBox.information(
+            self,
+            "Enroll Face",
+            f"Enroll face for {user['first_name']} (ID {user['id']})",
+        )
+
+    def on_edit_user(self, user):
+        QMessageBox.information(
+            self,
+            "Edit User",
+            f"Edit {user['first_name']} {user['last_name']} (ID {user['id']})",
+        )
+
 
 # Main Window
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -301,6 +415,7 @@ class MainWindow(QMainWindow):
         self.BASE_URL = "http://localhost:8000/api/"
         self.CHECK_USER_URL = f"{self.BASE_URL}users/check/"
         self.PRODUCT_NAME = "FaceCall"
+        self.USERS_TABLE_DATA_URL = "attendance/data/table"
 
         self.setGeometry(0, 0, 1280, 720)
         self.setWindowTitle(self.PRODUCT_NAME)
@@ -331,8 +446,13 @@ class MainWindow(QMainWindow):
 
         self.spinner = WaitingSpinner(
             self.overlay,
-            roundness=100.0, fade=80.0, radius=20, lines=20,
-            line_length=10, line_width=4, speed=1.0,
+            roundness=100.0,
+            fade=80.0,
+            radius=20,
+            lines=20,
+            line_length=10,
+            line_width=4,
+            speed=1.0,
             color=QColor(191, 0, 255),
         )
 
@@ -340,12 +460,10 @@ class MainWindow(QMainWindow):
         self.login_page = LoginPage(self)
         self.dashboard_page = DashboardPage(self)
 
-
         self.stack.addWidget(self.login_page)
         self.stack.addWidget(self.dashboard_page)
 
         self.login_page.login_successful.connect(self.on_login_successful)
-
 
         # Title bar styles live in TitleBar itself
         self.setStyleSheet("""
@@ -372,7 +490,9 @@ class MainWindow(QMainWindow):
 
     def _layout_overlay(self):
         rect = self.centralWidget().rect()
-        self.overlay.setGeometry(0, self.TITLE_HEIGHT, rect.width(), rect.height() - self.TITLE_HEIGHT)
+        self.overlay.setGeometry(
+            0, self.TITLE_HEIGHT, rect.width(), rect.height() - self.TITLE_HEIGHT
+        )
         self.spinner.move(
             (self.overlay.width() - self.spinner.width()) // 2,
             (self.overlay.height() - self.spinner.height()) // 2,
@@ -405,6 +525,7 @@ class MainWindow(QMainWindow):
         self.closed.set()
         event.accept()
 
+
 async def main(window):
     app_close = asyncio.Event()
     app.aboutToQuit.connect(app_close.set)
@@ -414,10 +535,12 @@ async def main(window):
         headers={
             "Authorization": "",
             "X-CSRFToken": "",
-        },)
+        },
+    )
 
-    await window.closed.wait()      # window was closed
+    await window.closed.wait()  # window was closed
     await window.session.close()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
