@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -114,6 +114,26 @@ class UserAttendanceDetailView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+
+class AdminDashboardView(APIView):
+    permission_classes = [AllowAny]
+    def get(self, request):
+        users = User.objects.filter(is_staff=False)
+        attendances = Attendance.objects.filter(user__in=users)
+
+        if not users:
+            return Response({"error": "No users yet"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not attendances:
+            return Response({"error": "No attendance taken yet"}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            "users": UserSerializer(users, many=True).data,
+            "attendances": AttendanceSerializer(attendances, many=True).data
+        }, status=status.HTTP_200_OK)
+
 
 
 class AttendanceListView(APIView):

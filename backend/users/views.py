@@ -1,10 +1,12 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.middleware.csrf import get_token
+
+from attendance.serializers import AttendanceSerializer
 from .serializers import UserCreateSerializer, UserSerializer
 
 User = get_user_model()
@@ -32,7 +34,6 @@ class RecognitionMapView(APIView):
         users = User.objects.all().exclude(is_staff=True).values("id", "first_name")
         return Response({"users": users}, status=status.HTTP_200_OK)
 
-
 class BulkUserCreateView(APIView):
     permission_classes = [AllowAny]
 
@@ -54,7 +55,6 @@ class BulkUserCreateView(APIView):
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST,
         )
-
 
 class UsersListView(APIView):
     permission_classes = [AllowAny]
@@ -89,4 +89,3 @@ class LoginView(APIView):
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(get_tokens_for_user(user, request), status=status.HTTP_200_OK)
-
