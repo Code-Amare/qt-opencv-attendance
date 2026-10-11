@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (
     QWidget,
     QMainWindow,
     QVBoxLayout,
+    QHBoxLayout,
     QLineEdit,
     QGraphicsBlurEffect,
     QStackedWidget,
@@ -21,7 +22,7 @@ from PyQt5.QtWidgets import (
 from pyqtspinner.spinner import WaitingSpinner
 from PyQt5.QtGui import QColor
 from PyQt5.QtCore import Qt, pyqtSignal
-from utils import TitleBar, icon_from_svg
+from utils import TitleBar, icon_from_svg, get_image, default_avatar
 
 class ApiError(Exception):
     pass
@@ -38,6 +39,15 @@ class AuthContext:
         self.refresh = ""
         self.csrf = ""
         self.isAuthenticated = False
+        self.profile_pic_url = ""
+        self.profile_pic = None
+
+
+    async def get_profile_pic(self):
+        pix = None
+        if self.profile_pic_url:
+            pix = await get_image(self.profile_pic_url)
+        self.profile_pic = pix or default_avatar()
 
     def add_tokens(self, data, session):
         tokens = data["tokens"]
@@ -52,6 +62,7 @@ class AuthContext:
         self.email = user["email"]
         self.first_name = user["first_name"]
         self.last_name = user["last_name"]
+        self.profile_pic_url = user["profile_picture"]
 
         self.update_headers(session)
 
@@ -179,9 +190,43 @@ class LoginPage(QWidget):
 
 class DashboardPage(QWidget):
 
-    def __init__(self):
+    def __init__(self, window):
         super().__init__()
-        
+
+        self.window_ = window
+
+        self.initUi()
+
+    def initUi(self):
+
+        layout = QVBoxLayout(self)
+        nav_widget = QWidget()
+        nav_layout = QHBoxLayout(nav_widget)
+
+        self.nav_welcome_label = QLabel("")
+        self.avatar = QLabel()
+        self.avatar.setFixedSize(48, 48)
+        self.avatar.setScaledContents(True)
+
+        nav_layout.addWidget(self.nav_welcome_label)
+        nav_layout.addStretch()
+        nav_layout.addWidget(self.avatar)
+
+        layout.addWidget(nav_widget)
+        layout.addStretch()  # the rest of the dashboard goes here
+
+    async def refresh(self):
+        auth = self.window_.auth
+        await auth.get_profile_pic()
+
+        self.nav_welcome_label.setText(f"Welcome, {auth.first_name}")
+        self.avatar.setPixmap(auth.profile_pic)
+
+
+
+
+
+
 
 
 class MainWindow(QMainWindow):
@@ -233,14 +278,14 @@ class MainWindow(QMainWindow):
 
         # Pages
         self.login_page = LoginPage(self)
-        self.login_page.login_successful.connect(self.on_login_successful)
+        self.dashboard_page = DashboardPage(self)
+
+
         self.stack.addWidget(self.login_page)
+        self.stack.addWidget(self.dashboard_page)
 
-        self.home_page = QLabel("Logged in!")  # placeholder, replace with your real page
-        self.home_page.setAlignment(Qt.AlignCenter)
-        self.stack.addWidget(self.home_page)
+        self.login_page.login_successful.connect(self.on_login_successful)
 
-        self.stack.setCurrentWidget(self.login_page)
 
         # Title bar styles live in TitleBar itself
         self.setStyleSheet("""
@@ -251,8 +296,14 @@ class MainWindow(QMainWindow):
             QPushButton:hover { background: #3f114e; }
         """)
 
-    def on_login_successful(self):
-        self.stack.setCurrentWidget(self.home_page)
+    @asyncSlot()
+    async def on_login_successful(self):
+        self.show_loader()
+        try:
+            await self.dashboard_page.refresh()
+        finally:
+            self.hide_loader()
+        self.stack.setCurrentWidget(self.dashboard_page)
 
     def center(self):
         geo = self.frameGeometry()

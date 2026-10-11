@@ -1,3 +1,4 @@
+import aiohttp
 from PyQt5.QtCore import Qt, QByteArray, QSize
 from PyQt5.QtGui import QIcon, QPixmap, QPainter
 from PyQt5.QtSvg import QSvgRenderer
@@ -67,6 +68,14 @@ APP_ICON_SVG = """
 </svg>
 """
 
+DEFAULT_AVATAR_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <circle cx="128" cy="128" r="128" fill="#2f2c31"/>
+  <circle cx="128" cy="100" r="44" fill="#9CA3AF"/>
+  <path d="M40 216 C40 164 80 150 128 150 C176 150 216 164 216 216 A128 128 0 0 1 40 216 Z"
+        fill="#9CA3AF"/>
+</svg>
+"""
 TITLEBAR_QSS = """
 #titlebar { background: #3b0762; }
 #titlebar QLabel { color: #F8FAFC; font-weight: 400; }
@@ -155,3 +164,48 @@ class TitleBar(QWidget):
 
     def mouseDoubleClickEvent(self, e):
         self.toggle_max()
+
+
+def pixmap_from_bytes(data: bytes, size: int = 256):
+    """Raster (png/jpg/webp/gif...) or SVG bytes -> QPixmap, or None if invalid."""
+    head = data[:512].lstrip().lower()
+    if head.startswith(b"<svg") or b"<svg" in head:
+        renderer = QSvgRenderer(QByteArray(data))
+        if not renderer.isValid():
+            return None
+        ds = renderer.defaultSize()
+        h = int(size * ds.height() / ds.width()) if ds.width() else size
+        pix = QPixmap(size, h)
+        pix.fill(Qt.transparent)
+        painter = QPainter(pix)
+        renderer.render(painter)
+        painter.end()
+        return pix
+
+    pix = QPixmap()
+    return pix if pix.loadFromData(data) else None
+
+
+def default_avatar(size=128):
+    return pixmap_from_bytes(DEFAULT_AVATAR_SVG.encode("utf-8"), size)
+
+async def get_image(source: str, session: aiohttp.ClientSession = None, size: int = 256):
+    print(source)
+    try:
+        if source.lower().startswith(("http://", "https://")):
+            if session is None:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
+                    async with s.get(source) as resp:
+                        resp.raise_for_status()
+                        data = await resp.read()
+            else:
+                async with session.get(source) as resp:
+                    resp.raise_for_status()
+                    data = await resp.read()
+        else:
+            with open(source, "rb") as f:
+                data = f.read()
+    except (aiohttp.ClientError, OSError, TimeoutError):
+        return None
+
+    return pixmap_from_bytes(data, size)

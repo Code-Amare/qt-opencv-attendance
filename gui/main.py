@@ -102,9 +102,9 @@ class MainWindow(QMainWindow):
         self.EMBEDDINGS_PATH = "face_embeddings.npz"
         self.SIMILARITY_THRESHOLD = 0.50
         self.CAMERA_INDEX = 0
-        self.STREAK_THRESHOLD = 100
+        self.STREAK_THRESHOLD = 20
         self.SESSION_ID = 1
-        self.ENABLE_ANTI_SPOOFING = True
+        self.ENABLE_ANTI_SPOOFING = False
 
         self.BASE_URL = "http://127.0.0.1:8000"
         self.RECOGNITION_MAP_URL = f"{self.BASE_URL}/api/users/recognition-map/"
@@ -172,7 +172,7 @@ class MainWindow(QMainWindow):
         else:
             self.timer = QTimer(self)
             self.timer.timeout.connect(self.recognize)
-            self.timer.start(30)
+            self.timer.start(5)
 
     def get_status(self, user_id):
         user = self.recorded_users.get(int(user_id))

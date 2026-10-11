@@ -3,6 +3,7 @@ from .models import User
 
 
 class UserSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.SerializerMethodField()
     class Meta:
         model = User
         fields = [
@@ -23,6 +24,10 @@ class UserSerializer(serializers.ModelSerializer):
             "email_verified",
             "two_factor_enabled",
         ]
+    def get_profile_picture(self, obj):
+        if obj.profile_picture:
+            return obj.profile_picture.url
+        return None
 
 
 class BulkUserSerializer(serializers.ListSerializer):
