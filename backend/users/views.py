@@ -1,3 +1,7 @@
+import io
+
+import numpy as np
+from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -5,7 +9,6 @@ from rest_framework.permissions import AllowAny, IsAdminUser
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.middleware.csrf import get_token
-
 from attendance.serializers import AttendanceSerializer
 from .serializers import UserCreateSerializer, UserSerializer
 
@@ -25,7 +28,6 @@ def get_tokens_for_user(user, request):
             "csrf": csrf_token,
         }
     }
-
 
 class RecognitionMapView(APIView):
     permission_classes = [AllowAny]
@@ -89,3 +91,33 @@ class LoginView(APIView):
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(get_tokens_for_user(user, request), status=status.HTTP_200_OK)
+
+class RecognitionMapFileView(APIView):
+
+    def get(self, request):
+        users = User.objects.exclude(face_embeddings__isnull=True).only(
+            "id", "first_name", "face_embeddings"
+        )
+
+        vectors, labels, user_ids, first_names = [], [], [], []
+        for u in users:
+            arr = u.get_embeddings()
+            if len(arr) == 0:
+                continue
+            vectors.append(arr)
+            labels.extend([u.id] * len(arr))
+            user_ids.append(u.id)
+            first_names.append(u.first_name)
+
+        buf = io.BytesIO()
+        np.savez_compressed(
+            buf,
+            embeddings=np.concatenate(vectors) if vectors else np.empty((0, 512), np.float32),
+            labels=np.array(labels, dtype=np.int32),
+            user_ids=np.array(user_ids, dtype=np.int32),
+            first_names=np.array(first_names, dtype=str),
+        )
+
+        response = HttpResponse(buf.getvalue(), content_type="application/octet-stream")
+        response["Content-Disposition"] = 'attachment; filename="face_embeddings.npz"'
+        return response
