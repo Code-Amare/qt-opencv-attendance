@@ -2,6 +2,7 @@ import io
 
 import numpy as np
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -121,3 +122,47 @@ class RecognitionMapFileView(APIView):
         response = HttpResponse(buf.getvalue(), content_type="application/octet-stream")
         response["Content-Disposition"] = 'attachment; filename="face_embeddings.npz"'
         return response
+
+class SaveFaceEmbeddingView(APIView):
+    def post(self, request, user_id):
+        face_embedding = request.data.get("face_embedding")
+
+        if not isinstance(face_embedding, list) or not face_embedding:
+            return Response(
+                {"error": "A face embedding list is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.filter(id=user_id).first()
+        if not user:
+            return Response({"error": "Invalid User id"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            embedding = np.asarray(face_embedding, dtype=np.float32)
+
+            if embedding.shape != (512,):
+                raise ValueError("Embedding must contain exactly 512 values")
+
+            if not np.isfinite(embedding).all():
+                raise ValueError("Embedding contains invalid numbers")
+
+            user.set_embeddings(embedding)
+            user.embeddings_updated_at = timezone.now()
+            user.save(update_fields=[
+                "face_embeddings",
+                "embeddings_updated_at",
+            ])
+
+        except (ValueError, TypeError):
+            return Response(
+                {"error": "Invalid face embedding format"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {"detail": "Face embedding saved successfully"},
+            status=status.HTTP_200_OK,
+        )
+
+
+
+
