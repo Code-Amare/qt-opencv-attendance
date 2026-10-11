@@ -11,7 +11,6 @@ from users.serializers import UserSerializer
 
 User = get_user_model()
 
-
 class EvaluateAttendanceView(APIView):
     permission_classes = [AllowAny]
 
@@ -72,7 +71,6 @@ class EvaluateAttendanceView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
-
 class CreateSessionView(APIView):
     permission_classes = [AllowAny]
 
@@ -95,7 +93,6 @@ class CreateSessionView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
-
 class UserAttendanceDetailView(APIView):
     permission_classes = [AllowAny]
 
@@ -115,8 +112,6 @@ class UserAttendanceDetailView(APIView):
             status=status.HTTP_200_OK,
         )
 
-
-
 class AdminDashboardView(APIView):
     permission_classes = [AllowAny]
     def get(self, request):
@@ -133,8 +128,6 @@ class AdminDashboardView(APIView):
             "users": UserSerializer(users, many=True).data,
             "attendances": AttendanceSerializer(attendances, many=True).data
         }, status=status.HTTP_200_OK)
-
-
 
 class AttendanceListView(APIView):
     permission_classes = [AllowAny]
@@ -180,3 +173,11 @@ class AttendanceListView(APIView):
             "total_users": len(attendance_list),
             "attendance": attendance_list,
         })
+
+class UserTableDataView(APIView):
+    permission_classes = [AllowAny]
+    def get(self, request):
+        users = User.objects.values("id", "email", "first_name", "face_embeddings")
+        if not users:
+            return Response({"error": "No users found"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"users": users}, status=status.HTTP_200_OK)

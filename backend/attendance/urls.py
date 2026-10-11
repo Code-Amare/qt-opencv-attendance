@@ -4,7 +4,8 @@ from .views import (
     CreateSessionView,
     AttendanceListView,
     UserAttendanceDetailView,
-    AdminDashboardView
+    AdminDashboardView,
+    UserTableDataView,
 )
 
 urlpatterns = [
@@ -13,4 +14,5 @@ urlpatterns = [
     path("session/<int:session_id>/", AttendanceListView.as_view()),
     path("<int:user_id>/", UserAttendanceDetailView.as_view()),
     path("data/", AdminDashboardView.as_view()),
+    path("data/table/", UserTableDataView.as_view())
 ]
