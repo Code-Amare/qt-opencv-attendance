@@ -18,11 +18,62 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QMessageBox,
     QAction,
+    QShortcut,
 )
 from pyqtspinner.spinner import WaitingSpinner
-from PyQt5.QtGui import QColor
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QColor, QKeySequence
+from PyQt5.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex
 from utils import TitleBar, icon_from_svg, get_image, default_avatar
+
+# Helper Classes
+
+# dashboard user table
+class UserModel(QAbstractTableModel):
+    HEADERS = ["Id", "First Name", "Last Name", "Face Status", "Actions"]
+    def __init__(self, window):
+        super().__init__()
+        self.window_ = window
+        self._users:list[dict] = []
+
+    def set_users(self, users):
+        self._users = users
+
+    def rowCount(self, parent =QModelIndex()):
+        return 0 if parent.isValid() else len(self._users)
+
+    def columnCount(self, parent = QModelIndex()):
+        return 0 if parent.isValid() else len(self.HEADERS)
+
+    def headerData(self, section, orientation, role = Qt.DisplayRole):
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return self.HEADERS
+
+    async def load_users_data(self):
+        self.window_.show_loader()
+        try:
+            async with self.window_.session.get(self.window_.USERS_DATA) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+        except ApiError as e:
+            print(e)
+        except aiohttp.ClientResponseError as e:
+            print(e)
+        finally:
+            self.window_.hide_loader()
+
+
+
+
+    def update_users(self, users):
+        self.beginResetModel()
+        self._users = users
+        self.endResetModel()
+
+
+
+
+
+
 
 class ApiError(Exception):
     pass
@@ -156,6 +207,9 @@ class LoginPage(QWidget):
 
         self.login_btn = QPushButton("Login")
         self.login_btn.clicked.connect(self.on_login_click)
+
+        self.enter_shortcut = QShortcut(QKeySequence(Qt.Key_Return), self)
+        self.enter_shortcut.activated.connect(self.on_login_click)
         # self.login_btn.
         form_widget = QWidget()
         form_widget.setMaximumWidth(560)
@@ -199,7 +253,9 @@ class DashboardPage(QWidget):
 
     def initUi(self):
 
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
+        sidebar_widget = QWidget()
+        sidebar_layout = QVBoxLayout(sidebar_widget)
         nav_widget = QWidget()
         nav_layout = QHBoxLayout(nav_widget)
 
@@ -208,10 +264,18 @@ class DashboardPage(QWidget):
         self.avatar.setFixedSize(48, 48)
         self.avatar.setScaledContents(True)
 
+        self.sidebar_dashboard_btn = QPushButton("Dashboard")
+        self.sidebar_enrolled_faces_btn = QPushButton("Enrolled Faces")
+
+        sidebar_layout.addWidget(self.sidebar_dashboard_btn)
+        sidebar_layout.addWidget(self.sidebar_enrolled_faces_btn)
+        sidebar_layout.addStretch()
+
         nav_layout.addWidget(self.nav_welcome_label)
         nav_layout.addStretch()
         nav_layout.addWidget(self.avatar)
 
+        layout.addWidget(sidebar_widget)
         layout.addWidget(nav_widget)
         layout.addStretch()  # the rest of the dashboard goes here
 
@@ -223,11 +287,7 @@ class DashboardPage(QWidget):
         self.avatar.setPixmap(auth.profile_pic)
 
 
-
-
-
-
-
+# Main Window
 
 class MainWindow(QMainWindow):
     def __init__(self):
