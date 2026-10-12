@@ -24,3 +24,5 @@ gui/models
 gui/face_recognizer.yml
 gui/face_embeddings.npz
 gui/assets
+
+build
