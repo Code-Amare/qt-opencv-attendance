@@ -24,5 +24,6 @@ gui/models
 gui/face_recognizer.yml
 gui/face_embeddings.npz
 gui/assets
+gui/insightface_root
 
 build

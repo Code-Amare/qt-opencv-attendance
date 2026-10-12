@@ -27,6 +27,7 @@ from pyqtspinner.spinner import WaitingSpinner
 from PyQt5.QtGui import QColor, QKeySequence, QImage, QPixmap
 from PyQt5.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QTimer
 from utils import TitleBar, icon_from_svg, get_image, default_avatar
+from anti_spoof import is_face_real
 
 # Helper Classes
 
@@ -472,6 +473,8 @@ class EnrollFaceEmbeddingPage(QWidget):
         return face.det_score >= self.MIN_DET_SCORE and (x2 - x1) >= self.MIN_FACE_SIZE
 
     def try_capture(self, frame, face):
+        x1, y1, x2, y2 = face.bbox.astype(int)
+
         now = time.monotonic()
         if len(self.buffer) >= self.MAX_BUFFER:
             return
@@ -480,7 +483,6 @@ class EnrollFaceEmbeddingPage(QWidget):
         if not self.is_good_face(face):
             return
 
-        x1, y1, x2, y2 = face.bbox.astype(int)
         pad = int((x2 - x1) * 0.2)  # a little margin around the face
         h, w = frame.shape[:2]
         crop = frame[max(y1 - pad, 0):min(y2 + pad, h), max(x1 - pad, 0):min(x2 + pad, w)]
@@ -526,11 +528,31 @@ class EnrollFaceEmbeddingPage(QWidget):
         face = self.detect_face(frame)
         display = frame.copy()  # draw on a copy, keep the original frame clean
 
+
         if face is not None:
             self.try_capture(frame, face)
             x1, y1, x2, y2 = face.bbox.astype(int)
             color = (0, 255, 0) if self.is_good_face(face) else (0, 165, 255)  # orange = not good enough
             cv2.rectangle(display, (x1, y1), (x2, y2), color, 2)
+
+            if self.window_.ENABLE_ANTI_SPOOFING:
+                spoof_label, spoof_confidence = is_face_real(frame, [x1, y1, x2, y2])
+
+                if spoof_label != "Real":
+
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    cv2.putText(
+                        frame,
+                        f"{spoof_label} {spoof_confidence * 100:.1f}%",
+                        (x1, max(y1 - 10, 25)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 0, 255),
+                        2,
+                    )
+
+                    self.update_frame(frame)
+                    return
 
         cv2.putText(display, f"Captured: {len(self.buffer)}/{self.MAX_BUFFER}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
@@ -710,9 +732,9 @@ class MainWindow(QMainWindow):
         self.PRODUCT_NAME = "FaceCall"
         self.USERS_TABLE_DATA_URL = "attendance/data/table"
         self.SIMILARITY_THRESHOLD = 0.50
-        self.CAMERA_INDEX = 1
+        self.CAMERA_INDEX = 0
         self.STREAK_THRESHOLD = 20
-        self.ENABLE_ANTI_SPOOFING = False
+        self.ENABLE_ANTI_SPOOFING = True
 
         self.setGeometry(0, 0, 1280, 720)
         self.setWindowTitle(self.PRODUCT_NAME)

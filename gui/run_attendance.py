@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QHBoxLayout,
-QGraphicsBlurEffect,
+    QGraphicsBlurEffect,
     QVBoxLayout,
     QApplication,
     QMainWindow,
@@ -25,6 +25,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QAbstractTableModel, QModelIndex, QTime
 from pyqtspinner.spinner import WaitingSpinner
 from utils import TitleBar, icon_from_svg
 from PyQt5.QtGui import QColor, QKeySequence, QImage, QPixmap
+from anti_spoof import is_face_real
 
 
 async def open_capture(index):
@@ -73,7 +74,7 @@ class AuthContext:
         self.csrf = tokens["csrf"]
         self.isAuthenticated = True
 
-        user = data["user"]  # adjust to match your printout
+        user = data["user"]
         self.id = user["id"]
         self.username = user["username"]
         self.email = user["email"]
@@ -184,7 +185,6 @@ class LoginPage(QWidget):
 
         self.enter_shortcut = QShortcut(QKeySequence(Qt.Key_Return), self)
         self.enter_shortcut.activated.connect(self.on_login_click)
-        # self.login_btn.
         form_widget = QWidget()
         form_widget.setMaximumWidth(560)
         form_layout = QVBoxLayout(form_widget)
@@ -225,6 +225,7 @@ class LoginPage(QWidget):
 
 class LoadFaceEmbeddingPage(QWidget):
     face_embedding_loaded = pyqtSignal()
+    EMBEDDINGS_PATH = "face_embeddings.npz"
 
     def __init__(self, window):
         super().__init__()
@@ -239,15 +240,23 @@ class LoadFaceEmbeddingPage(QWidget):
 
         self.local_btn = QPushButton("Load embedding locally")
         self.django_btn = QPushButton("Load new embedding")
+        self.save_btn = QPushButton("Download && save .npz")
         self.local_btn.clicked.connect(self.on_local_clicked)
         self.django_btn.clicked.connect(self.on_django_clicked)
+        self.save_btn.clicked.connect(self.on_save_clicked)
 
-        for w in (self.session_input, self.local_btn, self.django_btn):
+        for w in (self.session_input, self.local_btn, self.django_btn, self.save_btn):
             w.setFixedWidth(360)
 
         layout = QVBoxLayout(self)
         layout.addStretch()
-        for w in (self.session_input, self.local_btn, self.django_btn, self.error_label):
+        for w in (
+            self.session_input,
+            self.local_btn,
+            self.django_btn,
+            self.save_btn,
+            self.error_label,
+        ):
             layout.addWidget(w, alignment=Qt.AlignHCenter)
         layout.addStretch()
 
@@ -259,18 +268,43 @@ class LoadFaceEmbeddingPage(QWidget):
     async def on_django_clicked(self):
         await self.load(self.download)
 
-    async def read_local(self, path="face_embeddings.npz"):
-        with np.load(path) as data:
+    def set_message(self, text, error=True):
+        color = "#d20c0c" if error else "#2ecc71"
+        self.error_label.setStyleSheet(f"color: {color}; font-size: 18px;")
+        self.error_label.setText(text)
+
+    async def read_local(self, path=None):
+        with np.load(path or self.EMBEDDINGS_PATH) as data:
             self.window_.set_embeddings(data["embeddings"], data["labels"])
 
-    async def download(self):
+    async def fetch_embeddings(self):
         async with self.window_.session.get(
             self.window_.DOWNLOAD_FACE_EMBEDDINGS
         ) as resp:
             resp.raise_for_status()
-            content = await resp.read()
+            return await resp.read()
+
+    async def download(self):
+        content = await self.fetch_embeddings()
         with np.load(io.BytesIO(content)) as data:
             self.window_.set_embeddings(data["embeddings"], data["labels"])
+
+    @asyncSlot()
+    async def on_save_clicked(self):
+        self.window_.show_loader()
+        try:
+            content = await self.fetch_embeddings()
+            with np.load(io.BytesIO(content)) as data:
+                if len(data["embeddings"]) == 0 or len(data["embeddings"]) != len(data["labels"]):
+                    raise ValueError("Invalid embeddings file.")
+            with open(self.EMBEDDINGS_PATH, "wb") as f:
+                f.write(content)
+        except (aiohttp.ClientError, OSError, KeyError, ValueError) as e:
+            self.set_message(str(e))
+            return
+        finally:
+            self.window_.hide_loader()
+        self.set_message(f"Saved {self.EMBEDDINGS_PATH}", error=False)
 
     async def fetch_session(self, session_id):
         async with self.window_.session.get(f"attendance/session/{session_id}/") as resp:
@@ -288,23 +322,23 @@ class LoadFaceEmbeddingPage(QWidget):
     async def load(self, load_embeddings):
         text = self.session_input.text().strip()
         if not text.isdigit():
-            self.error_label.setText("Enter a valid session ID")
+            self.set_message("Enter a valid session ID")
             return
         session_id = int(text)
 
         self.window_.show_loader()
         try:
-            recorded = await self.fetch_session(session_id)  # backend validates it
+            recorded = await self.fetch_session(session_id)
             await load_embeddings()
         except (aiohttp.ClientError, OSError, KeyError, ValueError) as e:
-            self.error_label.setText(str(e))
+            self.set_message(str(e))
             return
         finally:
             self.window_.hide_loader()
 
         self.window_.session_id = session_id
         self.window_.recorded_users = recorded
-        self.error_label.setText("")
+        self.set_message("", error=False)
         self.face_embedding_loaded.emit()
 
 class RecordAttendancePage(QWidget):
@@ -314,9 +348,9 @@ class RecordAttendancePage(QWidget):
         super().__init__()
         self.window_ = window
         self.cap = None
-        self.label = None        # user id currently being recognized
+        self.label = None
         self.streak = 0
-        self.pending = set()     # user ids being sent to the backend
+        self.pending = set()
         self._tasks = set()
 
         self.camera_label = VideoLabel()
@@ -367,7 +401,6 @@ class RecordAttendancePage(QWidget):
         )
 
     def update_streak(self, user_id):
-        """Count consecutive frames of the same person. True once the threshold is reached."""
         if user_id is None:
             self.label, self.streak = None, 0
             return False
@@ -402,6 +435,25 @@ class RecordAttendancePage(QWidget):
             key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]),
         )
         x1, y1, x2, y2 = face.bbox.astype(int)
+        if self.window_.ENABLE_ANTI_SPOOFING:
+            spoof_label, spoof_confidence = is_face_real(frame, [x1, y1, x2, y2])
+
+            if spoof_label != "Real":
+                self.update_streak(None)
+
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                cv2.putText(
+                    frame,
+                    f"{spoof_label} {spoof_confidence * 100:.1f}%",
+                    (x1, max(y1 - 10, 25)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 0, 255),
+                    2,
+                )
+
+                self.update_frame(frame)
+                return
         user_id, score = self.window_.match_face(face)
         users = self.window_.recorded_users
         needed = self.window_.STREAK_THRESHOLD
@@ -466,7 +518,7 @@ class RecordAttendancePage(QWidget):
             self.status_label.setText(f"Request failed: {e}")
         finally:
             self.pending.discard(user_id)
-            if self.label == user_id:      # must earn 20 frames again if it failed
+            if self.label == user_id:
                 self.label, self.streak = None, 0
 
     def update_frame(self, frame):
@@ -501,9 +553,9 @@ class MainWindow(QMainWindow):
         self.DOWNLOAD_FACE_EMBEDDINGS = "users/face-embedding/download/"
         self.PRODUCT_NAME = "FaceCall | Attendance"
         self.SIMILARITY_THRESHOLD = 0.50
-        self.CAMERA_INDEX = 1
+        self.CAMERA_INDEX = 0
         self.STREAK_THRESHOLD = 20
-        self.ENABLE_ANTI_SPOOFING = False
+        self.ENABLE_ANTI_SPOOFING = True
 
         self.setGeometry(0, 0, 1280, 720)
         self.setWindowTitle(self.PRODUCT_NAME)
@@ -520,12 +572,10 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Title bar on top, pages below
         layout.addWidget(TitleBar(self))
         self.stack = QStackedWidget()
         layout.addWidget(self.stack)
 
-        # Loader overlay
         self.overlay = QWidget(container)
         self.overlay.setObjectName("overlay")
         self.overlay.setAttribute(Qt.WA_StyledBackground, True)
@@ -544,7 +594,6 @@ class MainWindow(QMainWindow):
             color=QColor(191, 0, 255),
         )
 
-        # Pages
         self.login_page = LoginPage(self)
         self.record_attendance_page = RecordAttendancePage(self)
 
@@ -556,10 +605,8 @@ class MainWindow(QMainWindow):
         self.load_page.face_embedding_loaded.connect(self.open_record_attendance)
         self.record_attendance_page.back_requested.connect(self.close_record_attendance)
 
-        # Navigation
         self.login_page.login_successful.connect(self.on_login_successful)
 
-        # Title bar styles live in TitleBar itself
         self.setStyleSheet("""
                     QMainWindow, QWidget#central { background: #1d1b1e; }
                     QLabel { color: #F8FAFC; font-size: 24px; font-family: poppins}
@@ -659,7 +706,7 @@ async def main(window):
         },
     )
 
-    await window.closed.wait()  # window was closed
+    await window.closed.wait()
     await window.session.close()
 
 
