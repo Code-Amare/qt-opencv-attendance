@@ -1,5 +1,14 @@
-export default function App() {
+import { Route, Routes } from "react-router-dom";
+import Home from "./pages/public/Home";
+import Login from "./pages/public/Login";
+
+const App = () => {
   return (
-    <h1 className="text-3xl font-bold underline text-center">Hello world!</h1>
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/login" element={<Login />} />
+    </Routes>
   );
-}
+};
+
+export default App;
