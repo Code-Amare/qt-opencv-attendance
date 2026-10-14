@@ -53,6 +53,10 @@ pip install insightface onnxruntime opencv-python numpy PyQt5 qasync aiohttp pyq
 
 For GPU use, install `onnxruntime-gpu` instead. It falls back to CPU automatically.
 
+### Based on your GPU version
+
+If it is still falling to CPU use this command `python -m pip install --upgrade "onnxruntime-gpu[cuda,cudnn]==1.31.0"`
+
 ## Run
 
 Start the backend:
