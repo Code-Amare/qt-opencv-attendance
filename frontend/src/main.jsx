@@ -10,12 +10,12 @@ import { SiteInfoProvider } from "./context/SiteInfoContext.jsx";
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <BrowserRouter>
-      <PageTitleProvider>
         <ToastProvider />
         <SiteInfoProvider>
-          <App />
+            <PageTitleProvider>
+                <App />
+            </PageTitleProvider>
         </SiteInfoProvider>
-      </PageTitleProvider>
     </BrowserRouter>
   </StrictMode>,
 );

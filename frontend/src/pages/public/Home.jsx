@@ -1,5 +1,14 @@
+import {useNavigate, Link} from "react-router-dom";
+
 const Home = () => {
-  return <div>Home</div>;
+  const navigate = useNavigate()
+
+
+  return <div>
+    <nav>
+      <Link to="/login">Login</Link>
+    </nav>
+  </div>;
 };
 
 export default Home;
