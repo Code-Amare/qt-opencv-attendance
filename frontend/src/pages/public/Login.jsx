@@ -9,12 +9,41 @@ const inputClass =
   "w-full rounded-sm border border-white/10 bg-background-elevated px-3 py-2.5 text-sm " +
   "placeholder:text-foreground-subtle focus:border-primary-hover focus:outline-none";
 
+const EyeIcon = ({ off }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4.5 w-4.5"
+    aria-hidden="true"
+  >
+    {off ? (
+      <>
+        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+        <path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+        <line x1="2" y1="2" x2="22" y2="22" />
+      </>
+    ) : (
+      <>
+        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+        <circle cx="12" cy="12" r="3" />
+      </>
+    )}
+  </svg>
+);
+
 const Login = () => {
   const navigate = useNavigate();
   const { user, login } = useAuth();
   const { updatePageTitle } = usePageTitle();
 
   const [form, setForm] = useState({ username_or_email: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -81,16 +110,26 @@ const Login = () => {
                   Forgot password?
                 </Link>
               </div>
-              <input
-                id="password"
-                type="password"
-                name="password"
-                autoComplete="current-password"
-                required
-                value={form.password}
-                onChange={onChange}
-                className={inputClass}
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  autoComplete="current-password"
+                  required
+                  value={form.password}
+                  onChange={onChange}
+                  className={`${inputClass} pr-10`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute inset-y-0 right-0 flex cursor-pointer items-center px-3 text-foreground-subtle hover:text-foreground"
+                >
+                  <EyeIcon off={showPassword} />
+                </button>
+              </div>
             </div>
 
             {error && (
@@ -102,7 +141,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="cursor-pointer w-full rounded-sm bg-primary py-2.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:opacity-60"
+              className="w-full cursor-pointer rounded-sm bg-primary py-2.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Signing in…" : "Login"}
             </button>
@@ -117,9 +156,9 @@ const Login = () => {
           <GoogleAuthButton />
 
           <p className="mt-8 text-sm text-foreground-muted">
-            No account?{" "}
-            <Link to="/register" className="text-foreground underline underline-offset-4 hover:text-primary-hover">
-              Create one
+            Accounts are created by your administrator. Need access?{" "}
+            <Link to="/contact" className="text-foreground underline underline-offset-4 hover:text-primary-hover">
+              Contact support
             </Link>
           </p>
         </div>

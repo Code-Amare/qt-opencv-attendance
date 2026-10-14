@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { usePageTitle } from "../../context/PageTitleContext.jsx";
+import { usePageTitle } from "../../context/PageTitleContext";
 
 const records = [
   { name: "Selam Tesfaye", time: "08:02", status: "Present" },
@@ -11,10 +11,10 @@ const records = [
 ];
 
 const features = [
-  ["Face enrollment", "Capture a few frames per person. Embeddings are generated and stored server-side."],
+  ["Face enrollment", "Administrators enroll students and teachers by capturing a few frames per person."],
   ["Live recognition", "Faces are matched in real time and confirmed over consecutive frames to avoid false marks."],
   ["Session-based attendance", "Every record is tied to a session, so each class or meeting has its own log."],
-  ["User management", "Search, edit and manage enrolled users and their face status from one table."],
+  ["User management", "Admins create and manage students and teachers, and their face status, from one table."],
   ["Reports", "Review attendance per session and per user, with a full audit trail."],
   ["Secure by design", "Cookie-based auth with CSRF protection and optional two-factor authentication."],
 ];
@@ -23,6 +23,12 @@ const stats = [
   ["< 1s", "Recognition time"],
   ["20", "Frame confirmation"],
   ["0", "Cards or sign-in sheets"],
+];
+
+const steps = [
+  ["Admin adds users", "Administrators create student and teacher accounts and enroll their faces."],
+  ["Start a session", "Teachers open a session and attendance recognition begins."],
+  ["Review", "Attendance is recorded automatically and available as reports."],
 ];
 
 const statusStyle = {
@@ -44,14 +50,14 @@ export default function Home() {
           <div className="hidden items-center gap-8 text-sm text-foreground-muted sm:flex">
             <a href="#features" className="hover:text-foreground">Features</a>
             <a href="#how" className="hover:text-foreground">How it works</a>
-            <a href="#security" className="hover:text-foreground">Security</a>
+            <a href="#access" className="hover:text-foreground">Access</a>
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <Link to="/login" className="px-3 py-1.5 text-foreground-muted hover:text-foreground">Sign in</Link>
-            <Link to="/register" className="rounded-sm bg-primary px-3.5 py-1.5 font-medium text-white hover:bg-primary-hover">
-              Get started
-            </Link>
-          </div>
+          <Link
+            to="/login"
+            className="rounded-sm bg-primary px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-hover"
+          >
+            Sign in
+          </Link>
         </nav>
       </header>
 
@@ -69,12 +75,18 @@ export default function Home() {
             with a central dashboard for users, sessions and reports.
           </p>
           <div className="mt-8 flex gap-3">
-            <Link to="/register" className="rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover">
-              Create account
-            </Link>
-            <Link to="/login" className="rounded-sm border border-white/10 px-5 py-2.5 text-sm text-foreground hover:bg-background-elevated">
+            <Link
+              to="/login"
+              className="rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover"
+            >
               Sign in
             </Link>
+            <a
+              href="#features"
+              className="rounded-sm border border-white/10 px-5 py-2.5 text-sm text-foreground hover:bg-background-elevated"
+            >
+              See features
+            </a>
           </div>
         </div>
 
@@ -119,7 +131,9 @@ export default function Home() {
 
       {/* Features */}
       <section id="features" className="mx-auto max-w-6xl px-6 py-24">
-        <h2 className="text-2xl font-semibold tracking-tight">Everything you need to run attendance</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">
+          Everything you need to run attendance
+        </h2>
         <div className="mt-10 grid border-l border-t border-white/10 sm:grid-cols-2 lg:grid-cols-3">
           {features.map(([title, text]) => (
             <div key={title} className="border-b border-r border-white/10 p-6">
@@ -135,11 +149,7 @@ export default function Home() {
         <div className="mx-auto max-w-6xl px-6 py-24">
           <h2 className="text-2xl font-semibold tracking-tight">How it works</h2>
           <ol className="mt-10 grid gap-10 sm:grid-cols-3">
-            {[
-              ["Enroll", "Add users and capture their face from the dashboard."],
-              ["Start a session", "Load the embeddings and enter the session ID."],
-              ["Review", "Attendance is recorded automatically and available as reports."],
-            ].map(([t, d], i) => (
+            {steps.map(([t, d], i) => (
               <li key={t}>
                 <span className="text-sm tabular-nums text-foreground-subtle">0{i + 1}</span>
                 <h3 className="mt-2 font-medium">{t}</h3>
@@ -150,15 +160,20 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Security */}
-      <section id="security" className="mx-auto max-w-6xl px-6 py-24">
+      {/* Access */}
+      <section id="access" className="mx-auto max-w-6xl px-6 py-24">
         <div className="flex flex-col items-start justify-between gap-6 border border-white/10 bg-background-surface p-8 sm:flex-row sm:items-center">
           <div>
-            <h2 className="text-xl font-semibold tracking-tight">Ready to get started?</h2>
-            <p className="mt-1 text-sm text-foreground-muted">Create an account and enroll your first user in minutes.</p>
+            <h2 className="text-xl font-semibold tracking-tight">Already have an account?</h2>
+            <p className="mt-1 text-sm text-foreground-muted">
+              Sign in with the credentials provided by your administrator.
+            </p>
           </div>
-          <Link to="/register" className="shrink-0 rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover">
-            Create account
+          <Link
+            to="/login"
+            className="shrink-0 rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover"
+          >
+            Sign in
           </Link>
         </div>
       </section>
