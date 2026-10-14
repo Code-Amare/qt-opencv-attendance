@@ -1,6 +1,7 @@
 import io
-
+import uuid
 import numpy as np
+from axes.utils import reset
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.views import APIView
@@ -10,25 +11,56 @@ from rest_framework.permissions import AllowAny, IsAdminUser
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.middleware.csrf import get_token
-from attendance.serializers import AttendanceSerializer
+from django.db import transaction
 from .serializers import UserCreateSerializer, UserSerializer
 
 User = get_user_model()
 
-def get_tokens_for_user(user, request):
-    refresh = RefreshToken.for_user(user)
+def send_cookies(request, user):
+    refresh_token = RefreshToken.for_user(user)
 
-    access_token = refresh.access_token
+    access_token = refresh_token.access_token
     csrf_token = get_token(request)
 
-    return {
+    response = Response({
         "user": UserSerializer(user).data,
         "tokens": {
             "access": str(access_token),
-            "refresh": str(refresh),
+            "refresh": str(refresh_token),
             "csrf": csrf_token,
-        }
-    }
+        },
+    },
+        status=status.HTTP_200_OK,
+    )
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="Lax",
+        max_age=60 * 15,
+    )
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="Lax",
+        max_age=60 * 60 * 24 * 7,
+    )
+
+    response.set_cookie(
+        "csrftoken",
+        csrf_token,
+        httponly=False,
+        secure=True,
+        samesite="Lax",
+    )
+
+    return response
+
 
 class RecognitionMapView(APIView):
     permission_classes = [AllowAny]
@@ -91,7 +123,7 @@ class LoginView(APIView):
         if not user.check_password(password):
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(get_tokens_for_user(user, request), status=status.HTTP_200_OK)
+        return send_cookies(request, user)
 
 class RecognitionMapFileView(APIView):
 
@@ -163,6 +195,85 @@ class SaveFaceEmbeddingView(APIView):
             status=status.HTTP_200_OK,
         )
 
+
+class GoogleAuthView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        token = request.data.get("token")
+
+        if not token:
+            return Response(
+                {"error": "Google token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            import requests as http_requests
+
+            google_response = http_requests.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+            if google_response.status_code != 200:
+                return Response(
+                    {"error": "Invalid Google token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            google_user = google_response.json()
+
+        except ValueError:
+            return Response(
+                {"error": "Invalid Google token."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        print(google_user)
+
+        email = google_user.get("email")
+        first_name = google_user.get("given_name", "guest")
+        last_name = google_user.get("family_name", "")
+        google_id = google_user.get("sub")
+        email_verified = google_user.get("email_verified", False)
+
+        if not email_verified:
+            return Response(
+                {"error": "Google email is not verified."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.filter(email=email).first()
+
+        if not user:
+            username = first_name + "-" + last_name
+            if User.objects.filter(username=username).exists():
+                username += uuid.uuid4().hex[0:5]
+            user = User.objects.create(
+                username=username,
+                email=email,
+            )
+            user.set_unusable_password()
+            user.save()
+
+        if not user.is_active:
+            return Response(
+                {"error": "Your account has been disabled."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not user.google_id:
+            user.google_id = google_id
+
+        with transaction.atomic():
+            user.email_verified = True
+
+            user.save(update_fields=["google_id", "email_verified"])
+            reset(username=user.email)
+
+        return send_cookies(request, user)
 
 
 

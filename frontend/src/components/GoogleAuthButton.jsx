@@ -14,7 +14,7 @@ const GoogleAuthButton = ({ nextPage = "/dashboard" }) => {
       const toastId = toast.loading("Signing you in...");
 
       try {
-        const response = await api.post("/accounts/auth/google/", {
+        const response = await api.post("/users/auth/google/", {
           token: tokenResponse.access_token,
         });
 

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-// const API_BASE_URL = import.meta.env.VITE_API_URL || "/";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/";
 
 // Only for dev
 
@@ -8,9 +8,9 @@ const hostname = window.location.hostname;
 
 const isWifiNetwork = hostname.startsWith("192");
 
-const API_BASE_URL = isWifiNetwork
-  ? import.meta.env.VITE_API_URL_WIFI
-  : import.meta.env.VITE_API_URL || "/";
+// const API_BASE_URL = isWifiNetwork
+//   ? import.meta.env.VITE_API_URL_WIFI
+//   : import.meta.env.VITE_API_URL || "/";
 
 // dev end here
 

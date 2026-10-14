@@ -31,7 +31,19 @@
     --color-info: #3B82F6;
   }
 }
-
-body{
-  background-color: #1c1c1c;
+@theme {
+  --color-background: #121215;
+  --color-background-surface: #18181C;
+  --color-background-elevated: #1F1F23;
+  --color-background-subtle: #222226;
+  --color-foreground: #E0E0E0;
+  --color-foreground-muted: #B0B0B5;
+  --color-foreground-subtle: #6B6B73;
+  --color-primary: #5B21B6;
+  --color-primary-hover: #6D28D9;
+  --color-primary-light: #3B1443;
+  --color-primary-dark: #4A154B;
+  --color-danger: #EF4444;
 }
+
+body { @apply bg-background text-foreground antialiased; }

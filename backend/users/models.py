@@ -7,7 +7,7 @@ import numpy as np
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
-    section = models.CharField(max_length=50)
+    section = models.CharField(max_length=50, null=True, blank=True)
     profile_picture = CloudinaryField(
         "ai/opencv-attendance/profile_picture",
         blank=True,
@@ -25,6 +25,13 @@ class User(AbstractUser):
     )
     email_verified = models.BooleanField(default=False)
     two_factor_enabled = models.BooleanField(default=False)
+
+    google_id = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+    )
 
     face_embeddings = models.BinaryField(blank=True, null=True, editable=False)
     embeddings_updated_at = models.DateTimeField(blank=True, null=True)
