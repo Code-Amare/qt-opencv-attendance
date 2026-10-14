@@ -231,11 +231,7 @@ class GoogleAuthView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        print(google_user)
-
         email = google_user.get("email")
-        first_name = google_user.get("given_name", "guest")
-        last_name = google_user.get("family_name", "")
         google_id = google_user.get("sub")
         email_verified = google_user.get("email_verified", False)
 
@@ -248,15 +244,7 @@ class GoogleAuthView(APIView):
         user = User.objects.filter(email=email).first()
 
         if not user:
-            username = first_name + "-" + last_name
-            if User.objects.filter(username=username).exists():
-                username += uuid.uuid4().hex[0:5]
-            user = User.objects.create(
-                username=username,
-                email=email,
-            )
-            user.set_unusable_password()
-            user.save()
+            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
         if not user.is_active:
             return Response(
