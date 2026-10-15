@@ -548,7 +548,7 @@ class MainWindow(QMainWindow):
 
         self.auth = AuthContext()
         self.session = None
-        self.BASE_URL = "http://localhost:8000/api/"
+        self.BASE_URL = "https://localhost:8000/api/"
         self.SET_ATTENDANCE = "attendance/"
         self.DOWNLOAD_FACE_EMBEDDINGS = "users/face-embedding/download/"
         self.PRODUCT_NAME = "FaceCall | Attendance"
