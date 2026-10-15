@@ -12,7 +12,20 @@ from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.middleware.csrf import get_token
 from django.db import transaction
+from .models import EmailLoginCode, ForgotPasswordRequest
 from .serializers import UserCreateSerializer, UserSerializer
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from utils.emails import (
+    send_forgot_password_email,
+    send_verification_code_email,
+    send_verification_code_email,
+    send_login_link_email,
+    send_contact_admin_email,
+)
+import logging
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -123,7 +136,101 @@ class LoginView(APIView):
         if not user.check_password(password):
             return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
+
+        if user.two_factor_enabled:
+            email = user.email
+
+            login_link = EmailLoginCode.objects.filter(user=user).first()
+
+            if login_link and not login_link.is_expired():
+                return Response(
+                    {
+                        "error": "Login link already sent, please try later to request a new one."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if login_link:
+                login_link.delete()
+            new_login_link = EmailLoginCode.objects.create(user=user)
+            try:
+
+                send_login_link_email(
+                    user=user,
+                    code=new_login_link.code,
+                )
+
+            except Exception:
+
+                new_login_link.delete()
+
+                return Response(
+                    {
+                        "error": (
+                            "Unable to send the login link. " "Please try again later."
+                        )
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            if user.email_verified:
+                return Response(
+                    {
+                        "error": "Email not verified yet.",
+                        "twofa_required": True,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+
+            return Response(
+                {
+                    "detail": "A login link has been sent to your email address.",
+                    "twofa_required": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
         return send_cookies(request, user)
+
+class LoginViaEmailView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, code):
+        if not code:
+            return Response(
+                {"error": "Invalid login link."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        login_link = EmailLoginCode.objects.filter(code=code).first()
+
+        if not login_link or login_link.is_expired():
+            return Response(
+                {"error": "This login link is invalid or has expired."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+
+            with transaction.atomic():
+                user = login_link.user
+                user.email_verified = True
+                user.save(update_fields=["email_verified"])
+
+                reset(username=user.email)
+
+                login_link.delete()
+
+                return send_cookies(request, user)
+
+        except Exception as e:
+            return Response(
+                {
+                    "error": "Unable to log you in.",
+                    "message": str(e),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 class RecognitionMapFileView(APIView):
 
@@ -195,7 +302,6 @@ class SaveFaceEmbeddingView(APIView):
             status=status.HTTP_200_OK,
         )
 
-
 class GoogleAuthView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -263,5 +369,154 @@ class GoogleAuthView(APIView):
 
         return send_cookies(request, user)
 
+class ContactResponseView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []  # also removes the CSRF requirement for public visitors
+
+    SUBJECTS = [
+        "Request account access",
+        "Forgot password / locked out",
+        "Report a problem",
+        "General question",
+    ]
+
+    def post(self, request):
+        name = request.data.get("name", "").strip()
+        email = request.data.get("email", "").strip()
+        subject = request.data.get("subject", "").strip()
+        message = request.data.get("message", "").strip()
+
+        if not all([name, email, subject, message]):
+            return Response({"error": "All fields are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            validate_email(email)
+        except ValidationError:
+            return Response({"error": "Enter a valid email address."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if subject not in self.SUBJECTS:
+            return Response({"error": "Invalid subject."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(message) < 10:
+            return Response({"error": "Message is too short."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            send_contact_admin_email(name, email, subject, message)
+        except Exception:
+            logger.exception("Contact form email failed | email=%s | subject=%r", email, subject)
+            return Response(
+                {"error": "Unable to send your message. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({"detail": "Message sent."}, status=status.HTTP_200_OK)
+
+class ForgotPasswordRequestView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        email = request.data.get("email", "").strip()
+
+        user = User.objects.filter(email=email).first()
+
+        if not email:
+            return Response(
+                {"error": "Email is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not user:
+            return Response(
+                {"error": "Invalid Email address."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        forgot_password_request = ForgotPasswordRequest.objects.filter(
+            user=user
+        ).first()
+
+        if forgot_password_request and not forgot_password_request.is_expired():
+            return Response(
+                {"error": "Request has already been sent. Please try later."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            if forgot_password_request:
+                forgot_password_request.delete()
+            new_fpr = ForgotPasswordRequest.objects.create(user=user)
+
+            send_forgot_password_email(user, new_fpr.code)
+            return Response(
+                {
+                    "detail": "A password reset link has been sent to your email address."
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            {"error": "Something went wrong."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
+class CheckResetPasswordRequestView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        code = request.data.get("code", "").strip()
+
+        if not code:
+            return Response(
+                {"error": "Code is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        reset_password_request = ForgotPasswordRequest.objects.filter(code=code).first()
+        print(reset_password_request)
+        if not reset_password_request or reset_password_request.is_expired():
+            return Response(
+                {"error": "Invalid or expired code"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response({"detail": "This code is valid."}, status=status.HTTP_200_OK)
+
+
+class ResetPasswordView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, code):
+        reset_request = ForgotPasswordRequest.objects.filter(code=code).first()
+        if not reset_request or reset_request.is_expired():
+            return Response(
+                {"error": "Invalid or expired password reset link."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        password = request.data.get("password", "").strip()
+
+        if not password:
+            return Response(
+                {"error": "Password is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = reset_request.user
+
+        if user.check_password(password):
+            return Response(
+                {
+                    "error": "Your new password must be different from your current password. Please request a new verification code."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            user.set_password(password)
+            user.save()
+            reset_request.delete()
+            reset(username=user.email)
+
+        return Response(
+            {"detail": "Your password has been reset successfully."},
+            status=status.HTTP_200_OK,
+        )

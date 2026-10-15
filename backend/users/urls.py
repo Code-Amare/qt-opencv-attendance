@@ -1,22 +1,31 @@
 from django.urls import path
-from rest_framework.views import APIView
 
 from .views import (
     BulkUserCreateView,
     RecognitionMapView,
     UsersListView,
     LoginView,
+    LoginViaEmailView,
     SaveFaceEmbeddingView,
     RecognitionMapFileView,
-    GoogleAuthView
+    GoogleAuthView,
+    ContactResponseView,
+    ForgotPasswordRequestView,
+    CheckResetPasswordRequestView,
+    ResetPasswordView,
 )
 
 urlpatterns = [
-    path("", UsersListView.as_view()),
     path("create/bulk/", BulkUserCreateView.as_view()),
     path("recognition-map/", RecognitionMapView.as_view()),
-    path("login/", LoginView.as_view()),
     path("face-embedding/add/<int:user_id>/", SaveFaceEmbeddingView.as_view()),
     path("face-embedding/download/", RecognitionMapFileView.as_view()),
+    path("login/", LoginView.as_view()),
+    path("login/email/<str:code>/", LoginViaEmailView.as_view()),
     path("auth/google/", GoogleAuthView.as_view()),
+    path("forgot-password/", ForgotPasswordRequestView.as_view()),
+    path("reset-password/check/", CheckResetPasswordRequestView.as_view()),
+    path("reset-password/<str:code>/", ResetPasswordView.as_view()),
+    path("contact/", ContactResponseView.as_view()),
+    path("", UsersListView.as_view()),
 ]
