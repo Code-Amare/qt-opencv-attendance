@@ -1,17 +1,13 @@
-import { useState, useEffect } from "react";
+import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { useNavigate } from "react-router-dom";
 
-export default ProtectedRoute = ({ role = [] }) => {
+const ProtectedRoute = ({ roles = [] }) => {
   const { user, loading } = useAuth();
-  const navigate = useNavigate();
 
-  if (loading) {
-    return <h1>Loading...</h1>;
-  }
+  if (loading) return <h1>Loading...</h1>;
 
   if (!user || !user.isAuthenticated) {
-    return navigate("/login");
+    return <Navigate to="/login" replace />;
   }
 
   if (roles.length > 0 && !roles.includes(user.role)) {
@@ -22,3 +18,5 @@ export default ProtectedRoute = ({ role = [] }) => {
 
   return <Outlet />;
 };
+
+export default ProtectedRoute;
