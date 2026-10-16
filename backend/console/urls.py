@@ -10,11 +10,11 @@ from .views import (
 )
 
 urlpatterns = [
-    path("admin/stats/", AdminStatsView.as_view()),
-    path("admin/users/", AdminUserListView.as_view()),
-    path("admin/users/<int:user_id>/", AdminUserDetailView.as_view()),
-    path("admin/users/<int:user_id>/reset-face/", AdminUserResetFaceView.as_view()),
-    path("admin/sessions/", AdminSessionListView.as_view()),
-    path("admin/sessions/<int:session_id>/", AdminSessionDetailView.as_view()),
-    path("admin/attendance/override/", AdminAttendanceOverrideView.as_view()),
+    path("stats/", AdminStatsView.as_view()),
+    path("users/", AdminUserListView.as_view()),
+    path("users/<int:user_id>/", AdminUserDetailView.as_view()),
+    path("users/<int:user_id>/reset-face/", AdminUserResetFaceView.as_view()),
+    path("sessions/", AdminSessionListView.as_view()),
+    path("sessions/<int:session_id>/", AdminSessionDetailView.as_view()),
+    path("attendance/override/", AdminAttendanceOverrideView.as_view()),
 ]
