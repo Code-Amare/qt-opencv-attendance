@@ -6,5 +6,5 @@ urlpatterns = [
     path("users/", include("users.urls")),
     path("attendance/", include("attendance.urls")),
     path("admin/", include("console.urls")),
-    path("admin/", SiteSettingsView.as_view()),
+    path("site/", SiteSettingsView.as_view()),
 ]
