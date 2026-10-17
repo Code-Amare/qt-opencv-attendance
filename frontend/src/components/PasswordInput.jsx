@@ -32,7 +32,11 @@ const EyeIcon = ({ off }) => (
   </svg>
 );
 
-export default function PasswordInput({ className = "", ...props }) {
+export default function PasswordInput({
+  className = "",
+  invalid = false,
+  ...props
+}) {
   const [show, setShow] = useState(false);
 
   return (
@@ -40,8 +44,10 @@ export default function PasswordInput({ className = "", ...props }) {
       <input
         {...props}
         type={show ? "text" : "password"}
+        aria-invalid={invalid || undefined}
         className={`${fieldClass} ${className}`}
       />
+
       <button
         type="button"
         onClick={() => setShow((s) => !s)}
