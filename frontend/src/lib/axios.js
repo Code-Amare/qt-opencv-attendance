@@ -82,7 +82,7 @@ api.interceptors.response.use(
             originalRequest._retry = true;
 
             try {
-                await refreshApi.post("/accounts/token/refresh/");
+                await refreshApi.post("/users/token/refresh/");
 
                 // Retry the original request once
                 return api(originalRequest);

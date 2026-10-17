@@ -1,5 +1,4 @@
 import io
-import uuid
 import numpy as np
 from axes.utils import reset
 from django.http import HttpResponse
@@ -7,7 +6,7 @@ from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.middleware.csrf import get_token
@@ -16,6 +15,7 @@ from .models import EmailLoginCode, ForgotPasswordRequest
 from .serializers import UserCreateSerializer, UserSerializer
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
+from rest_framework_simplejwt.exceptions import TokenError
 from utils.emails import (
     send_forgot_password_email,
     send_verification_code_email,
@@ -81,6 +81,50 @@ class MeView(APIView):
     def get(self, request):
         me = request.user
         return Response({"user": UserSerializer(me).data}, status=status.HTTP_200_OK)
+
+
+class RefreshTokenView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        refresh_token = request.COOKIES.get("refresh_token")
+        if not refresh_token:
+            return Response(
+                {"detail": "Refresh token missing"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            token = RefreshToken(refresh_token)
+
+            response = Response({"success": True}, status=status.HTTP_200_OK)
+            response.set_cookie(
+                "access_token",
+                str(token.access_token),
+                httponly=True,
+                secure=True,
+                samesite="Lax",
+                max_age=60 * 15,
+                path="/",
+            )
+
+            response.set_cookie(
+                "refresh_token",
+                str(token),
+                httponly=True,
+                secure=True,
+                samesite="Lax",
+                max_age=60 * 60 * 24 * 7,
+                path="/",
+            )
+            return response
+        except TokenError as e:
+            print("TokenError:", type(e).__name__)
+            print("Message:", str(e))
+            return Response(
+                {"detail": "Invalid or expired refresh token", "refresh": True},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
 
 class RecognitionMapView(APIView):
