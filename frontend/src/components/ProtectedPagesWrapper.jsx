@@ -10,7 +10,7 @@ const ProtectedRoute = ({ roles = [] }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (roles.length > 0 && !roles.includes(user.role)) {
+  if (!user.isStaff && !roles.includes("admin")) {
     return (
       <Navigate to={`/unauthorized?allowed_for=${roles.join(",")}`} replace />
     );

@@ -26,7 +26,7 @@ const Login = () => {
     updatePageTitle("Sign in");
   }, []);
 
-  if (user.isAuthenticated) return <Navigate to="/dashboard" replace />;
+  if (user.isAuthenticated) return <Navigate to="/admin" replace />;
 
   const onChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -44,18 +44,27 @@ const Login = () => {
 
     setLoading(true);
     try {
-      const res = await api.post("/users/login/", form, { skipAuthRefresh: true });
+      const res = await api.post("/users/login/", form, {
+        skipAuthRefresh: true,
+      });
       const data = res.data;
 
       // Two-factor: a login link was emailed, no session yet
       if (data.twofa_required) {
         if (data.error) return setError(data.error);
         setForm({ ...form, password: "" });
-        return setNotice(data.detail || "A login link has been sent to your email address.");
+        return setNotice(
+          data.detail || "A login link has been sent to your email address.",
+        );
       }
 
-      login(data.user);
-      navigate("/dashboard");
+      if (data.user.is_staff) {
+        login(data.user);
+
+        navigate("/admin");
+      } else {
+        setError("This page is only for admin users");
+      }
     } catch (err) {
       setError(getErrorMessage(err, "Unable to sign in. Please try again."));
     } finally {
@@ -72,28 +81,43 @@ const Login = () => {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="border-b border-white/5 px-6 py-4">
-        <Link to="/" className="text-base font-semibold tracking-tight">FaceCall</Link>
+        <Link to="/" className="text-base font-semibold tracking-tight">
+          FaceCall
+        </Link>
       </header>
 
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm">
           <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-          <p className="mt-1 text-sm text-foreground-muted">Access your FaceCall workspace.</p>
+          <p className="mt-1 text-sm text-foreground-muted">
+            Access your FaceCall workspace.
+          </p>
 
           <form onSubmit={onSubmit} noValidate className="mt-8 space-y-4">
             {error && (
-              <Alert variant="error" title="Sign in failed" onClose={() => setError("")}>
+              <Alert
+                variant="error"
+                title="Sign in failed"
+                onClose={() => setError("")}
+              >
                 {error}
               </Alert>
             )}
             {notice && (
-              <Alert variant="info" title="Check your email" onClose={() => setNotice("")}>
+              <Alert
+                variant="info"
+                title="Check your email"
+                onClose={() => setNotice("")}
+              >
                 {notice}
               </Alert>
             )}
 
             <div>
-              <label htmlFor="username_or_email" className="mb-1.5 block text-sm text-foreground-muted">
+              <label
+                htmlFor="username_or_email"
+                className="mb-1.5 block text-sm text-foreground-muted"
+              >
                 Username or email
               </label>
               <input
@@ -110,8 +134,13 @@ const Login = () => {
 
             <div>
               <div className="mb-1.5 flex items-center justify-between text-sm">
-                <label htmlFor="password" className="text-foreground-muted">Password</label>
-                <Link to="/forgot-password" className="text-foreground-muted underline-offset-4 hover:text-foreground hover:underline">
+                <label htmlFor="password" className="text-foreground-muted">
+                  Password
+                </label>
+                <Link
+                  to="/forgot-password"
+                  className="text-foreground-muted underline-offset-4 hover:text-foreground hover:underline"
+                >
                   Forgot password?
                 </Link>
               </div>
@@ -145,7 +174,10 @@ const Login = () => {
 
           <p className="mt-8 text-sm text-foreground-muted">
             Accounts are created by your administrator. Need access?{" "}
-            <Link to="/contact" className="text-foreground underline underline-offset-4 hover:text-primary-hover">
+            <Link
+              to="/contact"
+              className="text-foreground underline underline-offset-4 hover:text-primary-hover"
+            >
               Contact support
             </Link>
           </p>
@@ -153,11 +185,17 @@ const Login = () => {
       </main>
 
       <footer className="border-t border-white/5 px-6 py-4 text-xs text-foreground-subtle">
-        <Link to="/privacy" className="hover:text-foreground-muted">Privacy</Link>
+        <Link to="/privacy" className="hover:text-foreground-muted">
+          Privacy
+        </Link>
         <span className="mx-2">·</span>
-        <Link to="/terms" className="hover:text-foreground-muted">Terms</Link>
+        <Link to="/terms" className="hover:text-foreground-muted">
+          Terms
+        </Link>
         <span className="mx-2">·</span>
-        <Link to="/help" className="hover:text-foreground-muted">Help</Link>
+        <Link to="/help" className="hover:text-foreground-muted">
+          Help
+        </Link>
       </footer>
     </div>
   );

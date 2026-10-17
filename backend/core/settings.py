@@ -167,16 +167,13 @@ AUTH_USER_MODEL = "users.User"
 
 AXES_FAILURE_LIMIT = 5
 AXES_COOLOFF_TIME = timedelta(minutes=15)
-AXES_LOCKOUT_COMBINATIONS = ["username,ip_address"]
-AXES_USERNAME_FORM_FIELD = "email"
+AXES_LOCKOUT_COMBINATIONS = ["username, ip_address"]
 
 AXES_IPWARE_PROXY = True
 AXES_IPWARE_META_PRECEDENCE_ORDER = [
     "HTTP_X_FORWARDED_FOR",
     "REMOTE_ADDR",
 ]
-
-AXES_USERNAME_CALLABLE = "utils.axes.get_username_from_request"
 
 
 AUTHENTICATION_BACKENDS = [

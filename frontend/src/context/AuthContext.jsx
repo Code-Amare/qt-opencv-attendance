@@ -25,7 +25,7 @@ const initialUser = {
 
   emailVerified: null,
   twoFactorEnabled: null,
-  role: null,
+  isStaff: null,
 };
 
 function formatUser(userData) {
@@ -50,7 +50,7 @@ function formatUser(userData) {
 
     emailVerified: userData.email_verified,
     twoFactorEnabled: userData.two_factor_enabled,
-    role: userData.role,
+    isStaff: userData.is_staff,
   };
 }
 
@@ -63,7 +63,7 @@ export function AuthProvider({ children }) {
     setLoading(true);
 
     try {
-      const response = await api.get("/accounts/me/");
+      const response = await api.get("/users/me/");
 
       const userData = response.data.user;
 
@@ -88,7 +88,7 @@ export function AuthProvider({ children }) {
   const updateProfile = async (payload) => {
     try {
       // payload = { first_name, last_name, phone_number, date_of_birth, gender }
-      const response = await api.patch("/accounts/profile/update/", payload);
+      const response = await api.patch("/users/profile/update/", payload);
       const updatedUser = response.data.user; // as per your response
 
       // Update the user state with the new data
@@ -108,7 +108,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      await api.post("/accounts/logout/");
+      await api.post("/users/logout/");
     } catch (error) {
       console.error("Logout failed:", error);
     } finally {

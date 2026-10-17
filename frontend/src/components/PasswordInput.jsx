@@ -5,8 +5,17 @@ const fieldClass =
   "placeholder:text-foreground-subtle focus:border-primary-hover focus:outline-none";
 
 const EyeIcon = ({ off }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4.5 w-4.5" aria-hidden="true">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-[18px] w-[18px]"
+    aria-hidden="true"
+  >
     {off ? (
       <>
         <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
@@ -23,16 +32,21 @@ const EyeIcon = ({ off }) => (
   </svg>
 );
 
-export default function PasswordInput({ id, ...props }) {
+export default function PasswordInput({ className = "", ...props }) {
   const [show, setShow] = useState(false);
 
   return (
     <div className="relative">
-      <input id={id} type={show ? "text" : "password"} className={fieldClass} {...props} />
+      <input
+        {...props}
+        type={show ? "text" : "password"}
+        className={`${fieldClass} ${className}`}
+      />
       <button
         type="button"
         onClick={() => setShow((s) => !s)}
         aria-label={show ? "Hide password" : "Show password"}
+        aria-pressed={show}
         className="absolute inset-y-0 right-0 flex cursor-pointer items-center px-3 text-foreground-subtle hover:text-foreground"
       >
         <EyeIcon off={show} />

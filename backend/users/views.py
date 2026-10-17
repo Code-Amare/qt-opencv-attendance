@@ -29,20 +29,22 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
+
 def send_cookies(request, user):
     refresh_token = RefreshToken.for_user(user)
 
     access_token = refresh_token.access_token
     csrf_token = get_token(request)
 
-    response = Response({
-        "user": UserSerializer(user).data,
-        "tokens": {
-            "access": str(access_token),
-            "refresh": str(refresh_token),
-            "csrf": csrf_token,
+    response = Response(
+        {
+            "user": UserSerializer(user).data,
+            "tokens": {
+                "access": str(access_token),
+                "refresh": str(refresh_token),
+                "csrf": csrf_token,
+            },
         },
-    },
         status=status.HTTP_200_OK,
     )
 
@@ -75,12 +77,19 @@ def send_cookies(request, user):
     return response
 
 
+class MeView(APIView):
+    def get(self, request):
+        me = request.user
+        return Response({"user": UserSerializer(me).data}, status=status.HTTP_200_OK)
+
+
 class RecognitionMapView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
         users = User.objects.all().exclude(is_staff=True).values("id", "first_name")
         return Response({"users": users}, status=status.HTTP_200_OK)
+
 
 class BulkUserCreateView(APIView):
     permission_classes = [AllowAny]
@@ -104,6 +113,7 @@ class BulkUserCreateView(APIView):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+
 class UsersListView(APIView):
     permission_classes = [AllowAny]
 
@@ -118,24 +128,32 @@ class UsersListView(APIView):
             {"users": UserSerializer(users, many=True).data}, status=status.HTTP_200_OK
         )
 
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
+
     def post(self, request):
         username_or_email = request.data.get("username_or_email", "").strip()
         password = request.data.get("password", "")
 
         if not username_or_email or not password:
-            return Response({"error": "Username and Password are required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Username and Password are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         user = User.objects.filter(username=username_or_email).first()
         if not user:
             user = User.objects.filter(email=username_or_email).first()
             if not user:
-                return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST
+                )
 
         if not user.check_password(password):
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
-
+            return Response(
+                {"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         if user.two_factor_enabled:
             email = user.email
@@ -181,7 +199,6 @@ class LoginView(APIView):
                     status=status.HTTP_200_OK,
                 )
 
-
             return Response(
                 {
                     "detail": "A login link has been sent to your email address.",
@@ -191,6 +208,7 @@ class LoginView(APIView):
             )
 
         return send_cookies(request, user)
+
 
 class LoginViaEmailView(APIView):
     permission_classes = [AllowAny]
@@ -232,6 +250,7 @@ class LoginViaEmailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+
 class RecognitionMapFileView(APIView):
 
     def get(self, request):
@@ -252,7 +271,9 @@ class RecognitionMapFileView(APIView):
         buf = io.BytesIO()
         np.savez_compressed(
             buf,
-            embeddings=np.concatenate(vectors) if vectors else np.empty((0, 512), np.float32),
+            embeddings=(
+                np.concatenate(vectors) if vectors else np.empty((0, 512), np.float32)
+            ),
             labels=np.array(labels, dtype=np.int32),
             user_ids=np.array(user_ids, dtype=np.int32),
             first_names=np.array(first_names, dtype=str),
@@ -261,6 +282,7 @@ class RecognitionMapFileView(APIView):
         response = HttpResponse(buf.getvalue(), content_type="application/octet-stream")
         response["Content-Disposition"] = 'attachment; filename="face_embeddings.npz"'
         return response
+
 
 class SaveFaceEmbeddingView(APIView):
     def post(self, request, user_id):
@@ -274,7 +296,9 @@ class SaveFaceEmbeddingView(APIView):
 
         user = User.objects.filter(id=user_id).first()
         if not user:
-            return Response({"error": "Invalid User id"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Invalid User id"}, status=status.HTTP_400_BAD_REQUEST
+            )
         try:
             embedding = np.asarray(face_embedding, dtype=np.float32)
 
@@ -286,10 +310,12 @@ class SaveFaceEmbeddingView(APIView):
 
             user.set_embeddings(embedding)
             user.embeddings_updated_at = timezone.now()
-            user.save(update_fields=[
-                "face_embeddings",
-                "embeddings_updated_at",
-            ])
+            user.save(
+                update_fields=[
+                    "face_embeddings",
+                    "embeddings_updated_at",
+                ]
+            )
 
         except (ValueError, TypeError):
             return Response(
@@ -301,6 +327,7 @@ class SaveFaceEmbeddingView(APIView):
             {"detail": "Face embedding saved successfully"},
             status=status.HTTP_200_OK,
         )
+
 
 class GoogleAuthView(APIView):
     permission_classes = [AllowAny]
@@ -350,7 +377,9 @@ class GoogleAuthView(APIView):
         user = User.objects.filter(email=email).first()
 
         if not user:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "User not found."}, status=status.HTTP_404_NOT_FOUND
+            )
 
         if not user.is_active:
             return Response(
@@ -368,6 +397,7 @@ class GoogleAuthView(APIView):
             reset(username=user.email)
 
         return send_cookies(request, user)
+
 
 class ContactResponseView(APIView):
     permission_classes = [AllowAny]
@@ -387,29 +417,42 @@ class ContactResponseView(APIView):
         message = request.data.get("message", "").strip()
 
         if not all([name, email, subject, message]):
-            return Response({"error": "All fields are required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "All fields are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             validate_email(email)
         except ValidationError:
-            return Response({"error": "Enter a valid email address."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Enter a valid email address."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if subject not in self.SUBJECTS:
-            return Response({"error": "Invalid subject."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Invalid subject."}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         if len(message) < 10:
-            return Response({"error": "Message is too short."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Message is too short."}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             send_contact_admin_email(name, email, subject, message)
         except Exception:
-            logger.exception("Contact form email failed | email=%s | subject=%r", email, subject)
+            logger.exception(
+                "Contact form email failed | email=%s | subject=%r", email, subject
+            )
             return Response(
                 {"error": "Unable to send your message. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         return Response({"detail": "Message sent."}, status=status.HTTP_200_OK)
+
 
 class ForgotPasswordRequestView(APIView):
     permission_classes = [AllowAny]

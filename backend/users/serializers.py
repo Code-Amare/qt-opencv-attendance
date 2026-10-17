@@ -4,6 +4,7 @@ from .models import User
 
 class UserSerializer(serializers.ModelSerializer):
     profile_picture = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
@@ -18,12 +19,14 @@ class UserSerializer(serializers.ModelSerializer):
             "date_of_birth",
             "email_verified",
             "two_factor_enabled",
+            "is_staff",
         ]
         read_only_fields = [
             "id",
             "email_verified",
             "two_factor_enabled",
         ]
+
     def get_profile_picture(self, obj):
         if obj.profile_picture:
             return obj.profile_picture.url

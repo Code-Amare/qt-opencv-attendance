@@ -13,9 +13,11 @@ from .views import (
     ForgotPasswordRequestView,
     CheckResetPasswordRequestView,
     ResetPasswordView,
+    MeView,
 )
 
 urlpatterns = [
+    path("me/", MeView.as_view()),
     path("create/bulk/", BulkUserCreateView.as_view()),
     path("recognition-map/", RecognitionMapView.as_view()),
     path("face-embedding/add/<int:user_id>/", SaveFaceEmbeddingView.as_view()),
