@@ -162,28 +162,6 @@ class AdminUserDetailView(APIView):
         return Response({"detail": "User deleted"}, status=status.HTTP_200_OK)
 
 
-class AdminUserResetFaceView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def post(self, request, user_id):
-        user = User.objects.filter(id=user_id, is_staff=False).first()
-        if not user:
-            return Response(
-                {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        if not user.has_face:
-            return Response(
-                {"error": "User has no face data"}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user.face_embeddings = None
-        user.embeddings_updated_at = None
-        user.save(update_fields=["face_embeddings", "embeddings_updated_at"])
-
-        return Response({"detail": "Face data reset"}, status=status.HTTP_200_OK)
-
-
 class AdminSessionListView(APIView):
     permission_classes = [IsAdminUser]
 
@@ -234,8 +212,6 @@ class AdminSessionDetailView(APIView):
 
 
 class AdminAttendanceOverrideView(APIView):
-    """Manually set a user's attendance status for a session."""
-
     permission_classes = [IsAdminUser]
 
     def put(self, request):
@@ -274,3 +250,63 @@ class AdminAttendanceOverrideView(APIView):
             },
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+class AdminSessionStateView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def patch(self, request, session_id):
+        session = AttendanceSession.objects.filter(id=session_id).first()
+        if not session:
+            return Response(
+                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        new_status = request.data.get("status", "")
+        if not new_status:
+            return Response(
+                {"error": "status is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if new_status not in AttendanceSession.Status.values:
+            return Response(
+                {
+                    "error": f"status must be one of {list(AttendanceSession.Status.values)}"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        session.status = new_status
+        session.save(update_fields=["status"])
+
+        return Response(
+            {
+                "detail": "Session state updated",
+                "session": AttendanceSessionSerializer(session).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class UserTableDataView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        users = User.objects.filter(is_staff=False)
+        if not users:
+            return Response(
+                {"error": "No users found"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        users_data = [
+            {
+                "id": user.id,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "face_embeddings": user.has_face,
+            }
+            for user in users
+        ]
+
+        return Response({"users": users_data})

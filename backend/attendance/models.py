@@ -40,11 +40,14 @@ class AttendanceSession(models.Model):
         }:
             return True
 
+        if not self.ended_at:
+            return False
+
         return timezone.now() >= self.ended_at
 
     @property
     def is_absent(self):
-        return timezone.now() >= (self.ended_at + self.self.late_time)
+        return timezone.now() >= (self.ended_at + self.late_time)
 
     class Meta:
         ordering = ["-started_at"]

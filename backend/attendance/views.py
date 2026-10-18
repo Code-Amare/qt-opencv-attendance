@@ -11,8 +11,9 @@ from users.serializers import UserSerializer
 
 User = get_user_model()
 
+
 class EvaluateAttendanceView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAdminUser]
 
     def post(self, request):
         user_id = request.data.get("user_id", "")
@@ -24,7 +25,7 @@ class EvaluateAttendanceView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user = User.objects.filter(id=user_id).first()
+        user = User.objects.filter(id=user_id, is_active=True).first()
         if not user:
             return Response(
                 {"error": "Invalid user_id"}, status=status.HTTP_400_BAD_REQUEST
@@ -36,32 +37,39 @@ class EvaluateAttendanceView(APIView):
                 {"error": "Invalid session_id"}, status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Reject completed / cancelled sessions
+        if session.status != AttendanceSession.Status.ACTIVE:
+            return Response(
+                {
+                    "error": f"Session is {session.status}, attendance cannot be recorded"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Already recorded? Return the existing record
+        existing = Attendance.objects.filter(user=user, session=session).first()
+        if existing:
+            return Response(
+                {
+                    "attendance": AttendanceSerializer(existing).data,
+                    "is_attendance_taken_before": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
         now = timezone.now()
-        if now <= session.ended_at:
+        if session.ended_at is None or now <= session.ended_at:
             attendance_status = Attendance.Status.PRESENT
         elif now <= session.ended_at + session.late_time:
             attendance_status = Attendance.Status.LATE
         else:
             attendance_status = Attendance.Status.ABSENT
 
-        attendance, created = Attendance.objects.get_or_create(
+        attendance = Attendance.objects.create(
             user=user,
             session=session,
-            defaults={
-                "status": attendance_status,
-            },
+            status=attendance_status,
         )
-
-        if not created:
-            return Response(
-                {
-                    "attendance": AttendanceSerializer(attendance).data,
-                    "is_attendance_taken_before": True,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        print(attendance)
 
         return Response(
             {
@@ -71,8 +79,9 @@ class EvaluateAttendanceView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
+
 class CreateSessionView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAdminUser]
 
     def post(self, request):
         serializer = AttendanceSessionSerializer(data=request.data)
@@ -93,8 +102,9 @@ class CreateSessionView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
+
 class UserAttendanceDetailView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAdminUser]
 
     def get(self, request, user_id):
         user = User.objects.filter(id=user_id).first()
@@ -112,42 +122,22 @@ class UserAttendanceDetailView(APIView):
             status=status.HTTP_200_OK,
         )
 
-class AdminDashboardView(APIView):
-    permission_classes = [AllowAny]
-    def get(self, request):
-        users = User.objects.filter(is_staff=False)
-        attendances = Attendance.objects.filter(user__in=users)
-
-        if not users:
-            return Response({"error": "No users yet"}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not attendances:
-            return Response({"error": "No attendance taken yet"}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response({
-            "users": UserSerializer(users, many=True).data,
-            "attendances": AttendanceSerializer(attendances, many=True).data
-        }, status=status.HTTP_200_OK)
 
 class AttendanceListView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAdminUser]
 
     def get(self, request, session_id):
         session = AttendanceSession.objects.filter(id=session_id).first()
 
         if not session:
-            return  Response({"error": "Invalid session_id"}, status=status.HTTP_200_OK)
+            return Response({"error": "Invalid session_id"}, status=status.HTTP_200_OK)
 
         existing = {
             record.user_id: record
-            for record in Attendance.objects.filter(
-                session=session
-            )
+            for record in Attendance.objects.filter(session=session)
         }
 
-        users = User.objects.filter(is_active=True).order_by(
-            "id"
-        )
+        users = User.objects.filter(is_active=True).order_by("id")
 
         attendance_list = []
 
@@ -159,36 +149,21 @@ class AttendanceListView(APIView):
             else:
                 attendance_status = None
 
-            attendance_list.append({
-                "user_id": user.id,
-                "first_name": user.first_name,
-                "status": attendance_status,
-            })
+            attendance_list.append(
+                {
+                    "user_id": user.id,
+                    "first_name": user.first_name,
+                    "status": attendance_status,
+                }
+            )
 
-        return Response({
-            "session_id": session.id,
-            "session_name": session.name,
-            "session_status": session.status,
-            "finalized": session.is_ended,
-            "total_users": len(attendance_list),
-            "attendance": attendance_list,
-        })
-
-class UserTableDataView(APIView):
-    permission_classes = [AllowAny]
-    def get(self, request):
-        users = User.objects.filter(is_staff=False)
-        if not users:
-            return Response({"error": "No users found"}, status=status.HTTP_400_BAD_REQUEST)
-
-        users_data = [
+        return Response(
             {
-                "id": user.id,
-                "first_name": user.first_name,
-                "last_name": user.last_name,
-                "face_embeddings": user.has_face,
+                "session_id": session.id,
+                "session_name": session.name,
+                "session_status": session.status,
+                "finalized": session.is_ended,
+                "total_users": len(attendance_list),
+                "attendance": attendance_list,
             }
-            for user in users
-        ]
-
-        return Response({"users": users_data})
+        )
