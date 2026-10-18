@@ -137,7 +137,9 @@ class AttendanceListView(APIView):
             for record in Attendance.objects.filter(session=session)
         }
 
-        users = User.objects.filter(is_active=True).order_by("id")
+        users = (
+            User.objects.filter(is_active=True).exclude(is_staff=True).order_by("id")
+        )
 
         attendance_list = []
 
