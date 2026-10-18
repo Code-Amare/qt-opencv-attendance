@@ -7,6 +7,8 @@ import ResetPassword from "./pages/public/ResetPassword.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import ProtectedRoute from "./components/ProtectedPagesWrapper.jsx";
 import Users from "./pages/admin/Users.jsx";
+import UserEdit from "./pages/admin/UserEdit.jsx";
+import UserNew from "./pages/admin/UserNew.jsx";
 
 const App = () => {
   return (
@@ -19,6 +21,8 @@ const App = () => {
       <Route element={<ProtectedRoute roles={["admin"]} />}>
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/users" element={<Users />} />
+        <Route path="/admin/users/:id" element={<UserEdit />} />
+        <Route path="/admin/users/new" element={<UserNew />} />
       </Route>
     </Routes>
   );
