@@ -186,9 +186,16 @@ export default function SessionDetail() {
           ← Back to sessions
         </Link>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {data.session_name}
-          </h1>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {data.session_name}
+            </h1>
+            <div className="bg-primary rounded-2xl flex px-2 py-1 w-35 items-center justify-center mt-1">
+              <p className="mt-1 text-lg tabular-nums text-foreground font-medium">
+                Session ID: {data.session_id}
+              </p>
+            </div>
+          </div>
           <div className="flex items-center gap-3">
             <select
               value={data.session_status}
