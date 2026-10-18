@@ -54,3 +54,17 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "phone_number",
         ]
         list_serializer_class = BulkUserSerializer
+
+
+class AdminUserUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            "first_name",
+            "last_name",
+            "email",
+            "section",
+            "phone_number",
+            "date_of_birth",
+            "is_active",
+        ]

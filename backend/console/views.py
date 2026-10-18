@@ -9,7 +9,7 @@ from django.utils import timezone
 from xml.sax.saxutils import escape
 from attendance.models import Attendance, AttendanceSession
 from attendance.serializers import AttendanceSerializer, AttendanceSessionSerializer
-from users.serializers import UserSerializer
+from users.serializers import UserSerializer, AdminUserUpdateSerializer
 from django.db import transaction
 from django.http import HttpResponse
 from reportlab.lib import colors
@@ -17,6 +17,24 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from cloudinary.exceptions import Error as CloudinaryError
+
+MAX_PICTURE_SIZE = 5 * 1024 * 1024
+
+
+def first_error(errors):
+    field, messages = next(iter(errors.items()))
+    message = messages[0] if isinstance(messages, (list, tuple)) else messages
+    return f"{field}: {message}"
+
+
+def invalid_picture(file):
+    if not (file.content_type or "").startswith("image/"):
+        return "profile_picture: the file must be an image"
+    if file.size > MAX_PICTURE_SIZE:
+        return "profile_picture: the image must be 5 MB or smaller"
+    return None
+
 
 User = get_user_model()
 
@@ -303,10 +321,29 @@ class AdminUserDetailView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        for field in USER_EDITABLE_FIELDS:
-            if field in request.data:
-                setattr(user, field, request.data[field])
-        user.save()
+        picture = request.FILES.get("profile_picture")
+        if picture:
+            error = invalid_picture(picture)
+            if error:
+                return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AdminUserUpdateSerializer(user, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(
+                {"error": first_error(serializer.errors)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if picture:
+            user.profile_picture = picture
+
+        try:
+            serializer.save()
+        except CloudinaryError as e:
+            return Response(
+                {"error": f"Image upload failed: {e}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
         return Response(
             {"detail": "User updated", "user": UserSerializer(user).data},
@@ -481,20 +518,28 @@ class UserTableDataView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        users = User.objects.filter(is_staff=False)
+        users = User.objects.filter(is_staff=False).order_by("id")
         if not users:
             return Response(
                 {"error": "No users found"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        users_data = [
-            {
-                "id": user.id,
-                "first_name": user.first_name,
-                "last_name": user.last_name,
-                "face_embeddings": user.has_face,
-            }
-            for user in users
-        ]
+        users_data = []
+
+        for user in users:
+            try:
+                profile_picture_url = user.profile_picture.url
+            except (ValueError, AttributeError):
+                profile_picture_url = None
+
+            users_data.append(
+                {
+                    "id": user.id,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "face_embeddings": user.has_face,
+                    "profile_picture": profile_picture_url,
+                }
+            )
 
         return Response({"users": users_data})

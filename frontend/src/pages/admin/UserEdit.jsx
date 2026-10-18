@@ -29,6 +29,8 @@ export default function UserEdit() {
     embeddings_updated_at: null,
   });
   const [attendances, setAttendances] = useState([]);
+  const [currentPicture, setCurrentPicture] = useState(null);
+  const [profilePicture, setProfilePicture] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
@@ -54,6 +56,7 @@ export default function UserEdit() {
           date_of_birth: u.date_of_birth ?? "",
           is_active: !!u.is_active,
         });
+        setCurrentPicture(u.profile_picture ?? null);
         setInfo({
           has_face: res.data.has_face,
           embeddings_updated_at: res.data.embeddings_updated_at,
@@ -76,6 +79,12 @@ export default function UserEdit() {
     if (notice) setNotice("");
   };
 
+  const onFileChange = (e) => {
+    setProfilePicture(e.target.files[0] ?? null);
+    if (error) setError("");
+    if (notice) setNotice("");
+  };
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -87,11 +96,35 @@ export default function UserEdit() {
 
     setSaving(true);
     try {
-      const payload = {
-        ...form,
-        date_of_birth: form.date_of_birth || null, // empty date must be null
-      };
-      await api.patch(`/admin/users/${id}/`, payload);
+      const formData = new FormData();
+      formData.append("first_name", form.first_name);
+      formData.append("last_name", form.last_name);
+      formData.append("email", form.email);
+      formData.append("section", form.section);
+      formData.append("phone_number", form.phone_number);
+      formData.append("date_of_birth", form.date_of_birth || "");
+      // Django's BooleanField.to_python only accepts "True"/"False"/"1"/"0"/"t"/"f"
+      // from multipart data — lowercase "true"/"false" would raise a validation error.
+      formData.append("is_active", form.is_active ? "True" : "False");
+
+      // Only send the file when the user actually picked a new one.
+      // Otherwise omit the field so the existing image is preserved.
+      if (profilePicture) {
+        formData.append("profile_picture", profilePicture);
+      }
+
+      await api.patch(`/admin/users/${id}/`, formData);
+
+      if (profilePicture) {
+        // Refresh the preview from the server so it shows the new image.
+        const res = await api.get(`/admin/users/${id}/`);
+        setCurrentPicture(res.data.user.profile_picture ?? null);
+        setProfilePicture(null);
+        // Clear the file input element too.
+        const fileInput = document.getElementById("profile_picture");
+        if (fileInput) fileInput.value = "";
+      }
+
       setNotice("User updated.");
     } catch (err) {
       setError(getErrorMessage(err, "Failed to update the user."));
@@ -164,6 +197,39 @@ export default function UserEdit() {
               {notice}
             </Alert>
           )}
+
+          {/* Profile picture */}
+          <div>
+            <label htmlFor="profile_picture" className={labelClass}>
+              Profile picture
+            </label>
+            <div className="flex items-center gap-4">
+              {currentPicture ? (
+                <img
+                  src={currentPicture}
+                  alt={fullName}
+                  className="h-16 w-16 shrink-0 rounded-full border border-white/10 object-cover"
+                />
+              ) : (
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-white/10 bg-background-elevated text-xs text-foreground-subtle">
+                  No photo
+                </div>
+              )}
+              <input
+                id="profile_picture"
+                name="profile_picture"
+                type="file"
+                accept="image/*"
+                onChange={onFileChange}
+                className={fieldClass}
+              />
+            </div>
+            {profilePicture && (
+              <p className="mt-1.5 text-xs text-foreground-muted">
+                Selected: {profilePicture.name}
+              </p>
+            )}
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
