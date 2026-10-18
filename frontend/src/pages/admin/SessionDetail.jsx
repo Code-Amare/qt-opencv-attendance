@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Alert from "../../components/Alert";
+import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
 import { usePageTitle } from "../../context/PageTitleContext";
@@ -36,32 +37,36 @@ export default function SessionDetail() {
 
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [savingId, setSavingId] = useState(null);
+  const [changingState, setChangingState] = useState(false);
+  const [confirmComplete, setConfirmComplete] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     updatePageTitle("Session");
   }, []);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await api.get(`/attendance/session/${id}/`);
-        // this endpoint answers 200 with an "error" key for an unknown session
-        if (res.data.error) {
-          setError(res.data.error);
-          return;
-        }
-        setData(res.data);
-      } catch (err) {
-        setError(getErrorMessage(err, "Failed to load the session."));
-      } finally {
-        setLoading(false);
+  const load = async () => {
+    try {
+      const res = await api.get(`/attendance/session/${id}/`);
+      // this endpoint answers 200 with an "error" key for an unknown session
+      if (res.data.error) {
+        setError(res.data.error);
+        return;
       }
-    };
+      setData(res.data);
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to load the session."));
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     load();
   }, [id]);
 
@@ -106,6 +111,53 @@ export default function SessionDetail() {
     }
   };
 
+  const changeState = async (status) => {
+    setChangingState(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await api.patch(`/admin/sessions/${id}/state/`, { status });
+      await load(); // attendance may have changed
+      if (res.data.marked_absent > 0) {
+        setNotice(
+          `Session completed. ${res.data.marked_absent} user(s) with no record were marked absent.`,
+        );
+      }
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to change the session state."));
+    } finally {
+      setChangingState(false);
+      setConfirmComplete(false);
+    }
+  };
+
+  const onStateSelect = (status) => {
+    if (status === data.session_status) return;
+    // completing marks everyone with no record as absent, so confirm first
+    if (status === "completed") return setConfirmComplete(true);
+    changeState(status);
+  };
+
+  const onDownload = async () => {
+    setDownloading(true);
+    setError("");
+    try {
+      const res = await api.get(`/admin/sessions/${id}/report/`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `session-${id}-report.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to download the report."));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   if (loading) return <p className="p-6 text-foreground-muted">Loading…</p>;
 
   if (!data) {
@@ -133,21 +185,40 @@ export default function SessionDetail() {
         >
           ← Back to sessions
         </Link>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">
             {data.session_name}
           </h1>
-          <span
-            className={`text-sm capitalize ${sessionStyle[data.session_status]}`}
-          >
-            {data.session_status}
-          </span>
+          <div className="flex items-center gap-3">
+            <select
+              value={data.session_status}
+              disabled={changingState}
+              onChange={(e) => onStateSelect(e.target.value)}
+              className={`cursor-pointer rounded-sm border border-white/10 bg-background-elevated px-3 py-2 text-sm focus:outline-none disabled:opacity-60 ${sessionStyle[data.session_status]}`}
+            >
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <button
+              onClick={onDownload}
+              disabled={downloading}
+              className="cursor-pointer rounded-sm bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {downloading ? "Preparing…" : "Download report"}
+            </button>
+          </div>
         </div>
       </div>
 
       {error && (
         <Alert variant="error" title="Error" onClose={() => setError("")}>
           {error}
+        </Alert>
+      )}
+      {notice && (
+        <Alert variant="info" title="Done" onClose={() => setNotice("")}>
+          {notice}
         </Alert>
       )}
 
@@ -252,6 +323,17 @@ export default function SessionDetail() {
           </div>
         )}
       </section>
+
+      <ConfirmModal
+        open={confirmComplete}
+        title="Complete session"
+        message={`Everyone with no record (${counts.unset} user${counts.unset === 1 ? "" : "s"}) will be marked absent, and attendance can no longer be taken for this session.`}
+        confirmText="Complete session"
+        loadingText="Completing…"
+        loading={changingState}
+        onConfirm={() => changeState("completed")}
+        onCancel={() => setConfirmComplete(false)}
+      />
     </div>
   );
 }
