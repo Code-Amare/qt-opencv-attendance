@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Alert from "../../components/Alert";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
@@ -11,16 +11,62 @@ const sessionStyle = {
   cancelled: "text-danger",
 };
 
-const attendanceStyle = {
-  present: "bg-success",
-  late: "bg-warning",
-  absent: "bg-danger",
-};
+const segments = [
+  ["present", "Present", "bg-success", "stroke-success"],
+  ["late", "Late", "bg-warning", "stroke-warning"],
+  ["absent", "Absent", "bg-danger", "stroke-danger"],
+];
+
+function Donut({ counts, total }) {
+  const r = 40;
+  const C = 2 * Math.PI * r;
+  let offset = 0;
+
+  return (
+    <div className="relative mx-auto h-44 w-44">
+      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+        <circle
+          cx="50"
+          cy="50"
+          r={r}
+          fill="none"
+          strokeWidth="12"
+          className="stroke-background-subtle"
+        />
+        {total > 0 &&
+          segments.map(([key, , , stroke]) => {
+            const len = (counts[key] / total) * C;
+            const circle = (
+              <circle
+                key={key}
+                cx="50"
+                cy="50"
+                r={r}
+                fill="none"
+                strokeWidth="12"
+                strokeDasharray={`${len} ${C - len}`}
+                strokeDashoffset={-offset}
+                className={stroke}
+              />
+            );
+            offset += len;
+            return circle;
+          })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-3xl font-semibold tabular-nums">
+          {total > 0 ? Math.round((counts.present / total) * 100) : 0}%
+        </span>
+        <span className="text-xs text-foreground-muted">on time</span>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { updatePageTitle } = usePageTitle();
   const [stats, setStats] = useState(null);
-  const [sessions, setSessions] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -31,16 +77,8 @@ export default function Dashboard() {
   useEffect(() => {
     const load = async () => {
       try {
-        const statsRes = await api.get("/admin/stats/");
-        setStats(statsRes.data);
-
-        // the backend returns 404 when there are no sessions yet
-        try {
-          const sessionsRes = await api.get("/admin/sessions/");
-          setSessions(sessionsRes.data.sessions);
-        } catch (err) {
-          if (err.response?.status !== 404) throw err;
-        }
+        const res = await api.get("/admin/stats/");
+        setStats(res.data);
       } catch (err) {
         setError(getErrorMessage(err, "Failed to load the dashboard."));
       } finally {
@@ -71,7 +109,15 @@ export default function Dashboard() {
   ];
 
   const byStatus = stats.attendance_by_status ?? {};
-  const totalRecords = Object.values(byStatus).reduce((a, b) => a + b, 0);
+  const counts = {
+    present: byStatus.present ?? 0,
+    late: byStatus.late ?? 0,
+    absent: byStatus.absent ?? 0,
+  };
+  const total = counts.present + counts.late + counts.absent;
+
+  const recent = stats.recent_sessions ?? []; // newest first
+  const chartData = [...recent].reverse(); // oldest -> newest for the chart
 
   return (
     <div className="space-y-8 p-6">
@@ -107,74 +153,145 @@ export default function Dashboard() {
       </section>
 
       <div className="grid gap-8 lg:grid-cols-3">
-        {/* Attendance breakdown */}
+        {/* Overall attendance donut */}
         <section className="border border-white/10 bg-background-surface">
           <div className="border-b border-white/10 px-4 py-3 text-sm font-medium">
-            Attendance breakdown
+            Overall attendance
           </div>
-          <div className="space-y-4 p-4">
-            {totalRecords === 0 ? (
-              <p className="text-sm text-foreground-muted">
+          <div className="space-y-5 p-6">
+            <Donut counts={counts} total={total} />
+            <ul className="space-y-2 text-sm">
+              {segments.map(([key, label, bg]) => (
+                <li key={key} className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <span className={`h-2.5 w-2.5 ${bg}`} />
+                    {label}
+                  </span>
+                  <span className="tabular-nums text-foreground-muted">
+                    {counts[key]}
+                    {total > 0 &&
+                      ` · ${Math.round((counts[key] / total) * 100)}%`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {total === 0 && (
+              <p className="text-center text-sm text-foreground-muted">
                 No attendance recorded yet.
               </p>
-            ) : (
-              ["present", "late", "absent"].map((key) => {
-                const count = byStatus[key] ?? 0;
-                const pct = Math.round((count / totalRecords) * 100);
-                return (
-                  <div key={key}>
-                    <div className="flex justify-between text-sm">
-                      <span className="capitalize">{key}</span>
-                      <span className="tabular-nums text-foreground-muted">
-                        {count} · {pct}%
-                      </span>
-                    </div>
-                    <div className="mt-1.5 h-1.5 bg-background-subtle">
-                      <div
-                        className={`h-full ${attendanceStyle[key]}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })
             )}
           </div>
         </section>
 
-        {/* Recent sessions */}
+        {/* Per-session chart */}
         <section className="border border-white/10 bg-background-surface lg:col-span-2">
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-            <span className="text-sm font-medium">Recent sessions</span>
-            <Link
-              to="/admin/sessions"
-              className="text-xs text-foreground-subtle hover:text-foreground"
-            >
-              View all
-            </Link>
+            <span className="text-sm font-medium">Attendance by session</span>
+            <span className="text-xs text-foreground-subtle">
+              Last {chartData.length} sessions
+            </span>
           </div>
-          {sessions.length === 0 ? (
+          {chartData.length === 0 ? (
             <p className="p-4 text-sm text-foreground-muted">
               No sessions yet.
             </p>
           ) : (
+            <div className="p-4">
+              <div className="flex h-56 items-end gap-3">
+                {chartData.map((s) => {
+                  const t = s.present + s.late + s.absent;
+                  return (
+                    <Link
+                      key={s.id}
+                      to={`/admin/sessions/${s.id}`}
+                      title={`${s.name}: ${s.present} present, ${s.late} late, ${s.absent} absent`}
+                      className="group flex h-full flex-1 flex-col justify-end"
+                    >
+                      <div className="mb-1 text-center text-xs tabular-nums text-foreground-subtle">
+                        {t}
+                      </div>
+                      <div className="flex min-h-1 flex-1 flex-col-reverse bg-background-subtle opacity-90 group-hover:opacity-100">
+                        {t > 0 &&
+                          segments.map(([key, , bg]) => (
+                            <div
+                              key={key}
+                              className={bg}
+                              style={{ height: `${(s[key] / t) * 100}%` }}
+                            />
+                          ))}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex gap-3">
+                {chartData.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex-1 truncate text-center text-xs text-foreground-muted"
+                    title={s.name}
+                  >
+                    {s.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+
+      {/* Recent sessions */}
+      <section className="border border-white/10 bg-background-surface">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <span className="text-sm font-medium">Recent sessions</span>
+          <Link
+            to="/admin/sessions"
+            className="text-xs text-foreground-subtle hover:text-foreground"
+          >
+            View all
+          </Link>
+        </div>
+        {recent.length === 0 ? (
+          <p className="p-4 text-sm text-foreground-muted">No sessions yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-foreground-subtle">
                   <th className="px-4 py-2.5 font-medium">Name</th>
                   <th className="px-4 py-2.5 font-medium">Started</th>
+                  <th className="px-4 py-2.5 font-medium">Present</th>
+                  <th className="px-4 py-2.5 font-medium">Late</th>
+                  <th className="px-4 py-2.5 font-medium">Absent</th>
                   <th className="px-4 py-2.5 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {sessions.slice(0, 5).map((s) => (
+                {recent.slice(0, 5).map((s) => (
                   <tr
                     key={s.id}
-                    className="border-b border-white/5 last:border-0"
+                    onClick={() => navigate(`/admin/sessions/${s.id}`)}
+                    className="cursor-pointer border-b border-white/5 last:border-0 hover:bg-background-elevated"
                   >
-                    <td className="px-4 py-3">{s.name}</td>
+                    <td className="px-4 py-3">
+                      <Link
+                        to={`/admin/sessions/${s.id}`}
+                        className="hover:underline"
+                      >
+                        {s.name}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 tabular-nums text-foreground-muted">
                       {new Date(s.started_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums text-success">
+                      {s.present}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums text-warning">
+                      {s.late}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums text-danger">
+                      {s.absent}
                     </td>
                     <td
                       className={`px-4 py-3 capitalize ${sessionStyle[s.status]}`}
@@ -185,9 +302,9 @@ export default function Dashboard() {
                 ))}
               </tbody>
             </table>
-          )}
-        </section>
-      </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

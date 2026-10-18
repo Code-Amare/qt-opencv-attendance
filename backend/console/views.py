@@ -166,7 +166,30 @@ class AdminStatsView(APIView):
 
     def get(self, request):
         students = User.objects.filter(is_staff=False)
-        by_status = Attendance.objects.values("status").annotate(count=Count("id"))
+        by_status = (
+            Attendance.objects.filter(user__is_staff=False)
+            .values("status")
+            .annotate(count=Count("id"))
+        )
+
+        def count(state):
+            return Count(
+                "attendances",
+                filter=Q(
+                    attendances__status=state,
+                    attendances__user__is_staff=False,
+                ),
+            )
+
+        recent = (
+            AttendanceSession.objects.annotate(
+                present=count("present"),
+                late=count("late"),
+                absent=count("absent"),
+            )
+            .order_by("-started_at")[:7]
+            .values("id", "name", "started_at", "status", "present", "late", "absent")
+        )
 
         return Response(
             {
@@ -177,6 +200,7 @@ class AdminStatsView(APIView):
                 ).count(),
                 "total_sessions": AttendanceSession.objects.count(),
                 "attendance_by_status": {i["status"]: i["count"] for i in by_status},
+                "recent_sessions": list(recent),  # newest first
             },
             status=status.HTTP_200_OK,
         )

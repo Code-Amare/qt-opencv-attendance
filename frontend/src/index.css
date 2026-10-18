@@ -44,6 +44,9 @@
   --color-primary-light: #3B1443;
   --color-primary-dark: #4A154B;
   --color-danger: #EF4444;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-info: #3B82F6;
 }
 
 body { @apply bg-background text-foreground antialiased; }
