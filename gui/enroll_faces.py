@@ -1,9 +1,10 @@
+import asyncio
 import time
 import common
 import aiohttp
 import cv2
 import numpy as np
-from PyQt5.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
+from PyQt5.QtCore import QAbstractTableModel, QModelIndex, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QAbstractItemView,
@@ -19,15 +20,16 @@ from PyQt5.QtWidgets import (
 from qasync import asyncSlot
 
 from common import BaseWindow, CameraPage, VideoLabel, draw_box, largest_face, run
+from utils import default_avatar, get_image
 
 
-# ------------------------------------------------------------ dashboard
 class UserModel(QAbstractTableModel):
     HEADERS = ["ID", "FIRST NAME", "LAST NAME", "FACE STATUS", "ACTIONS"]
 
     def __init__(self):
         super().__init__()
         self._users: list[dict] = []
+        self._avatars: dict = {}
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._users)
@@ -57,6 +59,9 @@ class UserModel(QAbstractTableModel):
                 return "Enrolled" if enrolled else "Not enrolled"
             return ""
 
+        if role == Qt.DecorationRole and col == 1:
+            return self._avatars.get(user["id"])
+
         if role == Qt.ForegroundRole and col == 3:
             return QColor("#10B981") if enrolled else QColor("#F59E0B")
 
@@ -65,9 +70,10 @@ class UserModel(QAbstractTableModel):
 
         return None
 
-    def set_users(self, users):
+    def set_users(self, users, avatars):
         self.beginResetModel()
         self._users = users
+        self._avatars = avatars
         self.endResetModel()
 
     def user_at(self, row):
@@ -76,6 +82,7 @@ class UserModel(QAbstractTableModel):
 
 class DashboardPage(QWidget):
     enroll_requested = pyqtSignal(int)
+    AVATAR_SIZE = 36
 
     def __init__(self, window):
         super().__init__()
@@ -83,23 +90,10 @@ class DashboardPage(QWidget):
         self.initUi()
 
     def initUi(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(24)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(32, 24, 32, 24)
+        layout.setSpacing(16)
 
-        # Sidebar
-        sidebar_widget = QWidget()
-        sidebar_widget.setFixedWidth(200)
-        sidebar_layout = QVBoxLayout(sidebar_widget)
-        sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        self.sidebar_dashboard_btn = QPushButton("Dashboard")
-        self.sidebar_enrolled_faces_btn = QPushButton("Enrolled Faces")
-        self.sidebar_enrolled_faces_btn.setObjectName("secondary")
-        sidebar_layout.addWidget(self.sidebar_dashboard_btn)
-        sidebar_layout.addWidget(self.sidebar_enrolled_faces_btn)
-        sidebar_layout.addStretch()
-
-        # Top nav
         nav_widget = QWidget()
         nav_layout = QHBoxLayout(nav_widget)
         nav_layout.setContentsMargins(0, 0, 0, 0)
@@ -115,10 +109,10 @@ class DashboardPage(QWidget):
         title = QLabel("Users")
         title.setObjectName("h1")
 
-        # Table
         self.table_model = UserModel()
         self.table = QTableView()
         self.table.setModel(self.table_model)
+        self.table.setIconSize(QSize(self.AVATAR_SIZE, self.AVATAR_SIZE))
         self.table.verticalHeader().hide()
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setHighlightSections(False)
@@ -127,20 +121,32 @@ class DashboardPage(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(56)
         self.table.setShowGrid(False)
 
-        # Right-hand content column
-        content = QWidget()
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(16)
-        content_layout.addWidget(nav_widget)
-        content_layout.addWidget(title)
-        content_layout.addWidget(self.table)
-
-        layout.addWidget(sidebar_widget)
-        layout.addWidget(content, 1)
+        layout.addWidget(nav_widget)
+        layout.addWidget(title)
+        layout.addWidget(self.table)
 
     def on_enroll_clicked(self, user_id):
         self.enroll_requested.emit(user_id)
+
+    def scale_avatar(self, pixmap):
+        return pixmap.scaled(
+            self.AVATAR_SIZE,
+            self.AVATAR_SIZE,
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
+        )
+
+    async def load_avatar(self, user, fallback):
+        url = user.get("profile_picture")
+        if not url:
+            return fallback
+        try:
+            pixmap = await get_image(url)
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+            return fallback
+        if pixmap is None or pixmap.isNull():
+            return fallback
+        return self.scale_avatar(pixmap)
 
     async def load_users(self):
         try:
@@ -152,7 +158,15 @@ class DashboardPage(QWidget):
         except aiohttp.ClientError as e:
             print(f"Failed to load users: {e}")
             return
-        self.table_model.set_users(data["users"])
+
+        users = data["users"]
+        fallback = self.scale_avatar(default_avatar())
+        pixmaps = await asyncio.gather(
+            *(self.load_avatar(user, fallback) for user in users)
+        )
+        avatars = {user["id"]: pix for user, pix in zip(users, pixmaps)}
+
+        self.table_model.set_users(users, avatars)
         self.populate_actions()
 
     async def refresh(self):
@@ -168,24 +182,17 @@ class DashboardPage(QWidget):
         has_face = bool(user.get("face_embeddings"))
 
         enroll_btn = QPushButton("Re-enroll Face" if has_face else "Enroll Face")
-        edit_btn = QPushButton("Edit")
-        edit_btn.setObjectName("secondary")
-        for btn in (enroll_btn, edit_btn):
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet("font-size: 14px; padding: 6px 12px;")
-
+        enroll_btn.setCursor(Qt.PointingHandCursor)
+        enroll_btn.setStyleSheet("font-size: 14px; padding: 6px 12px;")
         enroll_btn.clicked.connect(
             lambda _, uid=user["id"]: self.on_enroll_clicked(uid)
         )
-        edit_btn.clicked.connect(lambda _, u=user: self.on_edit_user(u))
 
         w = QWidget()
         lay = QHBoxLayout(w)
         lay.setContentsMargins(8, 4, 8, 4)
-        lay.setSpacing(8)
         lay.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         lay.addWidget(enroll_btn)
-        lay.addWidget(edit_btn)
         return w
 
     def populate_actions(self):
@@ -195,15 +202,7 @@ class DashboardPage(QWidget):
                 self.table_model.index(row, 4), self.make_actions_widget(user)
             )
 
-    def on_edit_user(self, user):
-        QMessageBox.information(
-            self,
-            "Edit User",
-            f"Edit {user['first_name']} {user['last_name']} (ID {user['id']})",
-        )
 
-
-# --------------------------------------------------------------- enroll
 class EnrollFaceEmbeddingPage(CameraPage):
     back_requested = pyqtSignal()
     buffer_full = pyqtSignal()
@@ -212,13 +211,13 @@ class EnrollFaceEmbeddingPage(CameraPage):
         super().__init__(window)
         self.user_id = None
 
-        self.buffer = []  # list of face crops (BGR images)
-        self.embeddings = []  # one embedding per captured face
+        self.buffer = []
+        self.embeddings = []
         self.embedding = None
         self.MAX_BUFFER = 15
-        self.CAPTURE_INTERVAL = 0.3  # seconds between captures
+        self.CAPTURE_INTERVAL = 0.3
         self.MIN_DET_SCORE = 0.7
-        self.MIN_FACE_SIZE = 120  # px, width of the face box
+        self.MIN_FACE_SIZE = 120
         self._last_capture = 0.0
 
         self.back_btn = QPushButton("← Back")
@@ -269,7 +268,7 @@ class EnrollFaceEmbeddingPage(CameraPage):
         if not self.is_good_face(face):
             return
 
-        pad = int((x2 - x1) * 0.2)  # a little margin around the face
+        pad = int((x2 - x1) * 0.2)
         h, w = frame.shape[:2]
         crop = frame[
             max(y1 - pad, 0) : min(y2 + pad, h), max(x1 - pad, 0) : min(x2 + pad, w)
@@ -293,14 +292,12 @@ class EnrollFaceEmbeddingPage(CameraPage):
         face = largest_face(self.window_.face_app.get(frame))
 
         if face is not None:
-            # check for spoofing BEFORE capturing, so fake faces never reach the buffer
             if self.is_spoof(frame, display, face.bbox):
                 self.update_frame(display)
                 return
 
             self.try_capture(frame, face)
             good = self.is_good_face(face)
-            # orange = face not good enough yet
             draw_box(display, face.bbox, color=(0, 255, 0) if good else (0, 165, 255))
 
         cv2.putText(
@@ -439,7 +436,6 @@ class CheckEmbeddingPage(CameraPage):
         face = largest_face(self.window_.face_app.get(frame))
 
         if face is not None:
-            # both vectors are normalized, so the dot product is the cosine similarity
             sim = float(np.dot(self.embedding, face.normed_embedding))
             matched = sim >= self.window_.SIMILARITY_THRESHOLD
             self.streak = self.streak + 1 if matched else 0
@@ -451,7 +447,7 @@ class CheckEmbeddingPage(CameraPage):
 
         needed = self.window_.STREAK_THRESHOLD
         if self.streak >= needed:
-            self.verified = True  # stays verified once reached
+            self.verified = True
         if self.verified:
             self.status_label.setText("Face verified")
             self.approve_btn.setEnabled(True)
@@ -461,7 +457,6 @@ class CheckEmbeddingPage(CameraPage):
         self.update_frame(display)
 
 
-# --------------------------------------------------------------- window
 class EnrollWindow(BaseWindow):
     PRODUCT_NAME = "FaceCall Enroll"
     USERS_TABLE_DATA_URL = "admin/users/gui-table/"
@@ -485,7 +480,6 @@ class EnrollWindow(BaseWindow):
         self.check_embedding_page.back_requested.connect(self.close_check_embedding)
         self.check_embedding_page.approved.connect(self.on_approved)
 
-    # ---- login ----
     @asyncSlot()
     async def on_login_successful(self):
         self.show_loader()
@@ -495,7 +489,6 @@ class EnrollWindow(BaseWindow):
             self.hide_loader()
         self.show_page(self.dashboard_page)
 
-    # ---- enroll flow ----
     @asyncSlot(int)
     async def open_enroll_page(self, user_id):
         self.enroll_page.set_user(user_id)
@@ -534,7 +527,6 @@ class EnrollWindow(BaseWindow):
         self.check_embedding_page.stop_camera()
         self.show_page(self.check_page)
 
-    # ---- save ----
     async def save_embedding(self, user_id, embedding):
         try:
             async with self.session.post(
@@ -565,7 +557,7 @@ class EnrollWindow(BaseWindow):
         try:
             ok, msg = await self.save_embedding(user_id, embedding)
             if ok:
-                await self.dashboard_page.load_users()  # row flips to "Enrolled"
+                await self.dashboard_page.load_users()
         finally:
             self.hide_loader()
 
