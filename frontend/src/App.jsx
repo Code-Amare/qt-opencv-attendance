@@ -9,6 +9,8 @@ import ProtectedRoute from "./components/ProtectedPagesWrapper.jsx";
 import Users from "./pages/admin/Users.jsx";
 import UserEdit from "./pages/admin/UserEdit.jsx";
 import UserNew from "./pages/admin/UserNew.jsx";
+import Sessions from "./pages/admin/Sessions.jsx";
+import SessionDetail from "./pages/admin/SessionDetail.jsx";
 
 const App = () => {
   return (
@@ -23,6 +25,8 @@ const App = () => {
         <Route path="/admin/users" element={<Users />} />
         <Route path="/admin/users/:id" element={<UserEdit />} />
         <Route path="/admin/users/new" element={<UserNew />} />
+        <Route path="/admin/sessions" element={<Sessions />} />
+        <Route path="/admin/sessions/:id" element={<SessionDetail />} />
       </Route>
     </Routes>
   );
