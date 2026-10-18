@@ -132,6 +132,11 @@ QHeaderView::section {
 QScrollBar:vertical { background: #18181C; width: 10px; margin: 0; }
 QScrollBar::handle:vertical { background: #2B2B36; min-height: 24px; border-radius: 2px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+
+QDialog, QMessageBox { background: #18181C; }
+QMessageBox QLabel { color: #E0E0E0; font-size: 15px; min-width: 280px; }
+QMessageBox QPushButton { min-width: 80px; }
 """
 
 MESSAGE_COLORS = {"error": "#EF4444", "warn": "#F59E0B", "ok": "#10B981"}

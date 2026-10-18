@@ -1,5 +1,7 @@
 import asyncio
+import io
 import time
+import zipfile
 import common
 import aiohttp
 import cv2
@@ -12,7 +14,7 @@ from PyQt5.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QBrush, QColor, QPainter, QPixmap
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -27,8 +29,42 @@ from PyQt5.QtWidgets import (
 )
 from qasync import asyncSlot
 
-from common import BaseWindow, CameraPage, VideoLabel, draw_box, largest_face, run
+from common import (
+    MESSAGE_COLORS,
+    BaseWindow,
+    CameraPage,
+    VideoLabel,
+    draw_box,
+    largest_face,
+    run,
+)
 from utils import default_avatar, get_image
+
+
+def circle_pixmap(pixmap, size):
+    ratio = 2
+    px = size * ratio
+
+    scaled = pixmap.scaled(
+        px, px, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+    )
+    scaled = scaled.copy(
+        (scaled.width() - px) // 2, (scaled.height() - px) // 2, px, px
+    )
+
+    out = QPixmap(px, px)
+    out.fill(Qt.transparent)
+
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.SmoothPixmapTransform)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QBrush(scaled))
+    painter.drawEllipse(0, 0, px, px)
+    painter.end()
+
+    out.setDevicePixelRatio(ratio)
+    return out
 
 
 class UserModel(QAbstractTableModel):
@@ -38,6 +74,17 @@ class UserModel(QAbstractTableModel):
         super().__init__()
         self._users: list[dict] = []
         self._avatars: dict = {}
+
+    @property
+    def users(self):
+        return self._users
+
+    def name_for(self, user_id):
+        for user in self._users:
+            if user["id"] == user_id:
+                name = f"{user['first_name']} {user['last_name']}".strip()
+                return name or f"user #{user_id}"
+        return f"user #{user_id}"
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._users)
@@ -91,6 +138,7 @@ class UserModel(QAbstractTableModel):
 class DashboardPage(QWidget):
     enroll_requested = pyqtSignal(int)
     AVATAR_SIZE = 36
+    NAV_AVATAR_SIZE = 48
     ACTIONS_WIDTH = 190
     COLUMN_PADDING = 24
     HEADER_STYLE = """
@@ -123,8 +171,7 @@ class DashboardPage(QWidget):
         self.nav_welcome_label = QLabel("")
         self.nav_welcome_label.setObjectName("muted")
         self.avatar = QLabel()
-        self.avatar.setFixedSize(48, 48)
-        self.avatar.setScaledContents(True)
+        self.avatar.setFixedSize(self.NAV_AVATAR_SIZE, self.NAV_AVATAR_SIZE)
         nav_layout.addWidget(self.nav_welcome_label)
         nav_layout.addStretch()
         nav_layout.addWidget(self.avatar)
@@ -180,14 +227,6 @@ class DashboardPage(QWidget):
     def on_enroll_clicked(self, user_id):
         self.enroll_requested.emit(user_id)
 
-    def scale_avatar(self, pixmap):
-        return pixmap.scaled(
-            self.AVATAR_SIZE,
-            self.AVATAR_SIZE,
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation,
-        )
-
     async def load_avatar(self, user, fallback):
         url = user.get("profile_picture")
         if not url:
@@ -198,7 +237,7 @@ class DashboardPage(QWidget):
             return fallback
         if pixmap is None or pixmap.isNull():
             return fallback
-        return self.scale_avatar(pixmap)
+        return circle_pixmap(pixmap, self.AVATAR_SIZE)
 
     async def load_users(self):
         try:
@@ -212,7 +251,7 @@ class DashboardPage(QWidget):
             return
 
         users = data["users"]
-        fallback = self.scale_avatar(default_avatar())
+        fallback = circle_pixmap(default_avatar(), self.AVATAR_SIZE)
         pixmaps = await asyncio.gather(
             *(self.load_avatar(user, fallback) for user in users)
         )
@@ -230,7 +269,7 @@ class DashboardPage(QWidget):
         await auth.get_profile_pic()
 
         self.nav_welcome_label.setText(f"Welcome, {auth.first_name}")
-        self.avatar.setPixmap(auth.profile_pic)
+        self.avatar.setPixmap(circle_pixmap(auth.profile_pic, self.NAV_AVATAR_SIZE))
 
         await self.load_users()
 
@@ -266,6 +305,7 @@ class EnrollFaceEmbeddingPage(CameraPage):
     def __init__(self, window):
         super().__init__(window)
         self.user_id = None
+        self._status_kind = None
 
         self.buffer = []
         self.embeddings = []
@@ -303,11 +343,29 @@ class EnrollFaceEmbeddingPage(CameraPage):
         panel_layout.setContentsMargins(8, 8, 8, 8)
         panel_layout.addWidget(self.camera_label)
 
+        self.status_label = QLabel("Look at the camera")
+        self.status_label.setObjectName("muted")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setWordWrap(True)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 24, 32, 24)
         layout.setSpacing(16)
         layout.addLayout(header)
         layout.addWidget(panel, stretch=1)
+        layout.addWidget(self.status_label)
+
+    def set_status(self, text, kind="muted"):
+        if kind != self._status_kind:
+            self._status_kind = kind
+            if kind == "error":
+                self.status_label.setStyleSheet(
+                    f"color: {MESSAGE_COLORS['error']}; font-size: 15px;"
+                )
+            else:
+                self.status_label.setStyleSheet("")
+        if self.status_label.text() != text:
+            self.status_label.setText(text)
 
     def is_good_face(self, face):
         x1, y1, x2, y2 = face.bbox
@@ -337,6 +395,7 @@ class EnrollFaceEmbeddingPage(CameraPage):
     def set_user(self, user_id):
         self.user_id = user_id
         self.id_label.setText(f"User ID: {user_id}")
+        self.set_status("Look at the camera")
         self.clear_buffer()
 
     def cam_feed(self):
@@ -346,16 +405,36 @@ class EnrollFaceEmbeddingPage(CameraPage):
 
         display = frame.copy()
         face = largest_face(self.window_.face_app.get(frame))
+        text = "Look at the camera"
 
         if face is not None:
             if self.is_spoof(frame, display, face.bbox):
                 self.update_frame(display)
                 return
 
+            duplicate_id, score = self.window_.find_duplicate(face)
+            if duplicate_id is not None:
+                self.clear_buffer()
+                name = self.window_.user_name(duplicate_id)
+                label = name if name.isascii() else f"user #{duplicate_id}"
+                draw_box(
+                    display,
+                    face.bbox,
+                    f"Looks like {label} ({score:.2f})",
+                    (0, 0, 255),
+                )
+                self.set_status(
+                    f"Rejected: this face looks similar to {name}.", "error"
+                )
+                self.update_frame(display)
+                return
+
             self.try_capture(frame, face)
             good = self.is_good_face(face)
             draw_box(display, face.bbox, color=(0, 255, 0) if good else (0, 165, 255))
+            text = "Hold still while the face is captured"
 
+        self.set_status(text)
         cv2.putText(
             display,
             f"Captured: {len(self.buffer)}/{self.MAX_BUFFER}",
@@ -516,6 +595,12 @@ class CheckEmbeddingPage(CameraPage):
 class EnrollWindow(BaseWindow):
     PRODUCT_NAME = "FaceCall Enroll"
     USERS_TABLE_DATA_URL = "admin/users/gui-table/"
+    DOWNLOAD_FACE_EMBEDDINGS = "users/face-embedding/download/"
+
+    def __init__(self):
+        super().__init__()
+        self.known_embeddings = np.empty((0, 512), dtype=np.float32)
+        self.known_labels = np.empty((0,), dtype=np.int32)
 
     def build_pages(self):
         self.dashboard_page = self.add_page(DashboardPage(self))
@@ -536,6 +621,49 @@ class EnrollWindow(BaseWindow):
         self.check_embedding_page.back_requested.connect(self.close_check_embedding)
         self.check_embedding_page.approved.connect(self.on_approved)
 
+    def user_name(self, user_id):
+        return self.dashboard_page.table_model.name_for(user_id)
+
+    async def load_known_faces(self, user_id):
+        others = [
+            u
+            for u in self.dashboard_page.table_model.users
+            if u.get("face_embeddings") and u["id"] != user_id
+        ]
+        if not others:
+            self.known_embeddings = np.empty((0, 512), dtype=np.float32)
+            self.known_labels = np.empty((0,), dtype=np.int32)
+            return
+
+        async with self.session.get(self.DOWNLOAD_FACE_EMBEDDINGS) as resp:
+            resp.raise_for_status()
+            content = await resp.read()
+
+        with np.load(io.BytesIO(content)) as data:
+            embeddings = np.asarray(data["embeddings"], dtype=np.float32).reshape(
+                -1, 512
+            )
+            labels = np.asarray(data["labels"], dtype=np.int32)
+
+        if len(embeddings) != len(labels):
+            raise ValueError("Invalid embeddings file.")
+
+        keep = labels != user_id
+        embeddings, labels = embeddings[keep], labels[keep]
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        self.known_embeddings = embeddings / np.maximum(norms, 1e-12)
+        self.known_labels = labels
+
+    def find_duplicate(self, face):
+        if len(self.known_embeddings) == 0:
+            return None, 0.0
+        similarities = self.known_embeddings @ face.normed_embedding
+        best = int(np.argmax(similarities))
+        score = float(similarities[best])
+        if score >= self.SIMILARITY_THRESHOLD:
+            return int(self.known_labels[best]), score
+        return None, score
+
     @asyncSlot()
     async def on_login_successful(self):
         self.show_loader()
@@ -549,10 +677,28 @@ class EnrollWindow(BaseWindow):
     async def open_enroll_page(self, user_id):
         self.enroll_page.set_user(user_id)
         self.show_loader()
+        error = None
         try:
+            await self.load_known_faces(user_id)
             await self.enroll_page.start_camera()
+        except (
+            aiohttp.ClientError,
+            OSError,
+            KeyError,
+            ValueError,
+            zipfile.BadZipFile,
+        ) as e:
+            error = str(e)
         finally:
             self.hide_loader()
+
+        if error:
+            QMessageBox.warning(
+                self,
+                "Face Enrollment",
+                f"Could not load the enrolled faces, so duplicates can't be checked.\n\n{error}",
+            )
+            return
         self.show_page(self.enroll_page)
 
     def close_enroll_page(self):
