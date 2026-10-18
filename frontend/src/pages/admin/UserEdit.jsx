@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Alert from "../../components/Alert";
+import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
 import { usePageTitle } from "../../context/PageTitleContext";
@@ -8,6 +9,8 @@ import { usePageTitle } from "../../context/PageTitleContext";
 const fieldClass =
   "w-full rounded-sm border border-white/10 bg-background-elevated px-3 py-2.5 text-sm " +
   "placeholder:text-foreground-subtle focus:border-primary-hover focus:outline-none";
+
+const labelClass = "mb-1.5 block text-sm text-foreground-muted";
 
 const statusStyle = {
   present: "text-success",
@@ -30,6 +33,7 @@ export default function UserEdit() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -96,9 +100,7 @@ export default function UserEdit() {
     }
   };
 
-  const onDelete = async () => {
-    if (!window.confirm("Delete this user? This cannot be undone.")) return;
-
+  const onConfirmDelete = async () => {
     setDeleting(true);
     setError("");
     try {
@@ -107,6 +109,7 @@ export default function UserEdit() {
     } catch (err) {
       setError(getErrorMessage(err, "Failed to delete the user."));
       setDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -127,6 +130,8 @@ export default function UserEdit() {
       </div>
     );
   }
+
+  const fullName = `${form.first_name} ${form.last_name}`.trim() || form.email;
 
   return (
     <div className="space-y-8 p-6">
@@ -162,10 +167,7 @@ export default function UserEdit() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label
-                htmlFor="first_name"
-                className="mb-1.5 block text-sm text-foreground-muted"
-              >
+              <label htmlFor="first_name" className={labelClass}>
                 First name
               </label>
               <input
@@ -177,10 +179,7 @@ export default function UserEdit() {
               />
             </div>
             <div>
-              <label
-                htmlFor="last_name"
-                className="mb-1.5 block text-sm text-foreground-muted"
-              >
+              <label htmlFor="last_name" className={labelClass}>
                 Last name
               </label>
               <input
@@ -194,10 +193,7 @@ export default function UserEdit() {
           </div>
 
           <div>
-            <label
-              htmlFor="email"
-              className="mb-1.5 block text-sm text-foreground-muted"
-            >
+            <label htmlFor="email" className={labelClass}>
               Email
             </label>
             <input
@@ -212,10 +208,7 @@ export default function UserEdit() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label
-                htmlFor="section"
-                className="mb-1.5 block text-sm text-foreground-muted"
-              >
+              <label htmlFor="section" className={labelClass}>
                 Section
               </label>
               <input
@@ -227,10 +220,7 @@ export default function UserEdit() {
               />
             </div>
             <div>
-              <label
-                htmlFor="phone_number"
-                className="mb-1.5 block text-sm text-foreground-muted"
-              >
+              <label htmlFor="phone_number" className={labelClass}>
                 Phone number
               </label>
               <input
@@ -244,10 +234,7 @@ export default function UserEdit() {
           </div>
 
           <div>
-            <label
-              htmlFor="date_of_birth"
-              className="mb-1.5 block text-sm text-foreground-muted"
-            >
+            <label htmlFor="date_of_birth" className={labelClass}>
               Date of birth
             </label>
             <input
@@ -281,11 +268,10 @@ export default function UserEdit() {
             </button>
             <button
               type="button"
-              onClick={onDelete}
-              disabled={deleting}
-              className="cursor-pointer text-sm text-danger hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => setConfirmDelete(true)}
+              className="cursor-pointer text-sm text-danger hover:underline"
             >
-              {deleting ? "Deleting…" : "Delete user"}
+              Delete user
             </button>
           </div>
         </form>
@@ -335,6 +321,16 @@ export default function UserEdit() {
           </section>
         </div>
       </div>
+
+      <ConfirmModal
+        open={confirmDelete}
+        title="Delete user"
+        message={`Delete ${fullName}? This cannot be undone.`}
+        confirmText="Delete"
+        loading={deleting}
+        onConfirm={onConfirmDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }
