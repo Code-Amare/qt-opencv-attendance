@@ -4,12 +4,20 @@ import common
 import aiohttp
 import cv2
 import numpy as np
-from PyQt5.QtCore import QAbstractTableModel, QModelIndex, QSize, Qt, pyqtSignal
+from PyQt5.QtCore import (
+    QAbstractTableModel,
+    QModelIndex,
+    QSize,
+    Qt,
+    QTimer,
+    pyqtSignal,
+)
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -83,10 +91,25 @@ class UserModel(QAbstractTableModel):
 class DashboardPage(QWidget):
     enroll_requested = pyqtSignal(int)
     AVATAR_SIZE = 36
+    ACTIONS_WIDTH = 190
+    COLUMN_PADDING = 24
+    HEADER_STYLE = """
+        QHeaderView::section {
+            background: #18181C;
+            color: #6B6B73;
+            border: none;
+            border-right: 1px solid rgba(255, 255, 255, 25);
+            border-bottom: 1px solid rgba(255, 255, 255, 25);
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+    """
 
     def __init__(self, window):
         super().__init__()
         self.window_ = window
+        self.needs_fit = False
         self.initUi()
 
     def initUi(self):
@@ -114,16 +137,45 @@ class DashboardPage(QWidget):
         self.table.setModel(self.table_model)
         self.table.setIconSize(QSize(self.AVATAR_SIZE, self.AVATAR_SIZE))
         self.table.verticalHeader().hide()
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.horizontalHeader().setHighlightSections(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.verticalHeader().setDefaultSectionSize(56)
         self.table.setShowGrid(False)
 
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setStretchLastSection(True)
+        header.setMinimumSectionSize(70)
+        header.setHighlightSections(False)
+        header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        header.setStyleSheet(self.HEADER_STYLE)
+
         layout.addWidget(nav_widget)
         layout.addWidget(title)
         layout.addWidget(self.table)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.needs_fit:
+            QTimer.singleShot(0, self.fit_columns)
+
+    def fit_columns(self):
+        self.needs_fit = False
+        count = self.table_model.columnCount()
+        self.table.resizeColumnsToContents()
+
+        widths = [
+            self.table.columnWidth(col) + self.COLUMN_PADDING
+            for col in range(count - 1)
+        ]
+        extra = self.table.viewport().width() - self.ACTIONS_WIDTH - sum(widths)
+        if extra > 0:
+            widths[1] += extra // 2
+            widths[2] += extra - extra // 2
+
+        for col, width in enumerate(widths):
+            self.table.setColumnWidth(col, width)
+        self.table.setColumnWidth(count - 1, self.ACTIONS_WIDTH)
 
     def on_enroll_clicked(self, user_id):
         self.enroll_requested.emit(user_id)
@@ -168,6 +220,10 @@ class DashboardPage(QWidget):
 
         self.table_model.set_users(users, avatars)
         self.populate_actions()
+
+        self.needs_fit = True
+        if self.isVisible():
+            self.fit_columns()
 
     async def refresh(self):
         auth = self.window_.auth
