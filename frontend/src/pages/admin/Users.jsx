@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Alert from "../../components/Alert";
+import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
 import { usePageTitle } from "../../context/PageTitleContext";
@@ -16,7 +17,8 @@ export default function Users() {
   const [section, setSection] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState(null);
+  const [userToDelete, setUserToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     updatePageTitle("Users");
@@ -47,32 +49,43 @@ export default function Users() {
     return () => clearTimeout(timer);
   }, [search, section]);
 
-  const onDelete = async (user) => {
-    const name = `${user.first_name} ${user.last_name}`.trim() || user.email;
-    if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
-
-    setDeletingId(user.id);
+  const onConfirmDelete = async () => {
+    setDeleting(true);
     setError("");
     try {
-      await api.delete(`/admin/users/${user.id}/`);
-      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      await api.delete(`/admin/users/${userToDelete.id}/`);
+      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id));
     } catch (err) {
       setError(getErrorMessage(err, "Failed to delete the user."));
     } finally {
-      setDeletingId(null);
+      setDeleting(false);
+      setUserToDelete(null);
     }
   };
 
+  const deleteName = userToDelete
+    ? `${userToDelete.first_name} ${userToDelete.last_name}`.trim() ||
+      userToDelete.email
+    : "";
+
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
+      <div>
         <Link
-          to="/admin/users/new"
-          className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+          to="/admin"
+          className="text-sm text-foreground-muted hover:text-foreground"
         >
-          Add user
+          ← Dashboard
         </Link>
+        <div className="mt-2 flex items-center justify-between">
+          <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
+          <Link
+            to="/admin/users/new"
+            className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+          >
+            Add user
+          </Link>
+        </div>
       </div>
 
       {error && (
@@ -150,11 +163,10 @@ export default function Users() {
                           Edit
                         </Link>
                         <button
-                          onClick={() => onDelete(u)}
-                          disabled={deletingId === u.id}
-                          className="cursor-pointer text-danger hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => setUserToDelete(u)}
+                          className="cursor-pointer text-danger hover:underline"
                         >
-                          {deletingId === u.id ? "Deleting…" : "Delete"}
+                          Delete
                         </button>
                       </div>
                     </td>
@@ -165,6 +177,16 @@ export default function Users() {
           </div>
         )}
       </section>
+
+      <ConfirmModal
+        open={!!userToDelete}
+        title="Delete user"
+        message={`Delete ${deleteName}? This cannot be undone.`}
+        confirmText="Delete"
+        loading={deleting}
+        onConfirm={onConfirmDelete}
+        onCancel={() => setUserToDelete(null)}
+      />
     </div>
   );
 }
