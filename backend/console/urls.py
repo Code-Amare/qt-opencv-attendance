@@ -7,6 +7,7 @@ from .views import (
     AdminUserDetailView,
     AdminUserListView,
     AdminSessionStateView,
+    AdminSessionReportView,
 )
 
 urlpatterns = [
@@ -17,4 +18,5 @@ urlpatterns = [
     path("sessions/<int:session_id>/", AdminSessionDetailView.as_view()),
     path("attendance/override/", AdminAttendanceOverrideView.as_view()),
     path("sessions/<int:session_id>/state/", AdminSessionStateView.as_view()),
+    path("sessions/<int:session_id>/report/", AdminSessionReportView.as_view()),
 ]

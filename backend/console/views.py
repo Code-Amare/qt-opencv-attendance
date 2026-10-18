@@ -1,3 +1,4 @@
+import io
 from django.db.models import Count, Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -5,10 +6,17 @@ from rest_framework import status
 from rest_framework.permissions import IsAdminUser
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-
+from xml.sax.saxutils import escape
 from attendance.models import Attendance, AttendanceSession
 from attendance.serializers import AttendanceSerializer, AttendanceSessionSerializer
 from users.serializers import UserSerializer
+from django.db import transaction
+from django.http import HttpResponse
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 User = get_user_model()
 
@@ -21,6 +29,136 @@ USER_EDITABLE_FIELDS = [
     "date_of_birth",
     "is_active",
 ]
+
+STATUS_COLORS = {
+    "present": colors.HexColor("#047857"),
+    "late": colors.HexColor("#B45309"),
+    "absent": colors.HexColor("#B91C1C"),
+    "not set": colors.HexColor("#6B7280"),
+}
+
+
+def fmt_dt(value):
+    return timezone.localtime(value).strftime("%Y-%m-%d %H:%M") if value else "-"
+
+
+class AdminSessionReportView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, session_id):
+        session = AttendanceSession.objects.filter(id=session_id).first()
+        if not session:
+            return Response(
+                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        records = {r.user_id: r for r in Attendance.objects.filter(session=session)}
+        users = User.objects.filter(is_staff=False, is_active=True).order_by(
+            "first_name", "last_name", "id"
+        )
+
+        counts = {"present": 0, "late": 0, "absent": 0, "not set": 0}
+        rows = [["#", "Name", "Email", "Status", "Recorded at"]]
+        row_colors = []
+
+        for i, user in enumerate(users, start=1):
+            record = records.get(user.id)
+            state = record.status if record else "not set"
+            counts[state] += 1
+            name = f"{user.first_name} {user.last_name}".strip() or "-"
+            rows.append(
+                [
+                    str(i),
+                    name,
+                    user.email or "-",
+                    state.title(),
+                    fmt_dt(record.recorded_at) if record else "-",
+                ]
+            )
+            row_colors.append(("TEXTCOLOR", (3, i), (3, i), STATUS_COLORS[state]))
+
+        # ---- build the PDF ----
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=15 * mm,
+            rightMargin=15 * mm,
+            topMargin=15 * mm,
+            bottomMargin=15 * mm,
+            title=f"{session.name} - Attendance report",
+        )
+        styles = getSampleStyleSheet()
+        story = [
+            Paragraph(escape(session.name), styles["Title"]),
+            Paragraph("Attendance report", styles["Heading3"]),
+            Spacer(1, 4 * mm),
+        ]
+
+        late_minutes = int(session.late_time.total_seconds() // 60)
+        info = [
+            ["Status", session.status.title()],
+            ["Starts", fmt_dt(session.started_at)],
+            ["Ends", fmt_dt(session.ended_at)],
+            ["Late window", f"{late_minutes} min"],
+            [
+                "Summary",
+                f"Present {counts['present']} | Late {counts['late']} | "
+                f"Absent {counts['absent']} | Not set {counts['not set']}",
+            ],
+            ["Generated", fmt_dt(timezone.now())],
+        ]
+        info_table = Table(info, colWidths=[30 * mm, 150 * mm])
+        info_table.setStyle(
+            TableStyle(
+                [
+                    ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
+        story += [info_table, Spacer(1, 8 * mm)]
+
+        if len(rows) == 1:
+            story.append(Paragraph("No students found.", styles["Normal"]))
+        else:
+            table = Table(
+                rows,
+                colWidths=[10 * mm, 52 * mm, 60 * mm, 25 * mm, 33 * mm],
+                repeatRows=1,  # header repeats on every page
+            )
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#5B21B6")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 9),
+                        (
+                            "ROWBACKGROUNDS",
+                            (0, 1),
+                            (-1, -1),
+                            [colors.white, colors.HexColor("#F3F4F6")],
+                        ),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D1D5DB")),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("TOPPADDING", (0, 0), (-1, -1), 5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                        *row_colors,
+                    ]
+                )
+            )
+            story.append(table)
+
+        doc.build(story)
+
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'attachment; filename="session-{session.id}-report.pdf"'
+        )
+        return response
 
 
 class AdminStatsView(APIView):
@@ -277,12 +415,38 @@ class AdminSessionStateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        session.status = new_status
-        session.save(update_fields=["status"])
+        marked_absent = 0
+        with transaction.atomic():
+            session.status = new_status
+            session.save(update_fields=["status"])
+
+            # Completing a session: everyone with no record becomes Absent
+            if new_status == AttendanceSession.Status.COMPLETED:
+                recorded = Attendance.objects.filter(session=session).values_list(
+                    "user_id", flat=True
+                )
+                missing = list(
+                    User.objects.filter(is_staff=False, is_active=True).exclude(
+                        id__in=recorded
+                    )
+                )
+                Attendance.objects.bulk_create(
+                    [
+                        Attendance(
+                            session=session,
+                            user=user,
+                            status=Attendance.Status.ABSENT,
+                        )
+                        for user in missing
+                    ],
+                    ignore_conflicts=True,
+                )
+                marked_absent = len(missing)
 
         return Response(
             {
                 "detail": "Session state updated",
+                "marked_absent": marked_absent,
                 "session": AttendanceSessionSerializer(session).data,
             },
             status=status.HTTP_200_OK,
