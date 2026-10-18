@@ -77,7 +77,7 @@ export default function UserNew() {
       <form
         onSubmit={onSubmit}
         noValidate
-        className="max-w-2xl space-y-4 border border-white/10 bg-background-surface p-6"
+        className="mx-auto w-full max-w-2xl space-y-4 border border-white/10 bg-background-surface p-6"
       >
         {error && (
           <Alert variant="error" title="Error" onClose={() => setError("")}>
