@@ -20,6 +20,7 @@ class UserSerializer(serializers.ModelSerializer):
             "email_verified",
             "two_factor_enabled",
             "is_staff",
+            "is_active",
         ]
         read_only_fields = [
             "id",
