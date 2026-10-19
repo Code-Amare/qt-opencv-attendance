@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Alert from "../../components/Alert";
 import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
@@ -11,6 +11,7 @@ const inputClass =
   "placeholder:text-foreground-subtle focus:border-primary-hover focus:outline-none";
 
 export default function Users() {
+  const navigate = useNavigate();
   const { updatePageTitle } = usePageTitle();
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState("");
@@ -136,10 +137,16 @@ export default function Users() {
                 {users.map((u) => (
                   <tr
                     key={u.id}
-                    className="border-b border-white/5 last:border-0 hover:bg-background-elevated"
+                    onClick={() => navigate(`/admin/users/${u.id}`)}
+                    className="cursor-pointer border-b border-white/5 last:border-0 hover:bg-background-elevated"
                   >
                     <td className="px-4 py-3">
-                      {`${u.first_name} ${u.last_name}`.trim() || "—"}
+                      <Link
+                        to={`/admin/users/${u.id}`}
+                        className="hover:underline"
+                      >
+                        {`${u.first_name} ${u.last_name}`.trim() || "—"}
+                      </Link>
                     </td>
                     <td className="px-4 py-3 text-foreground-muted">
                       {u.email}
@@ -157,13 +164,17 @@ export default function Users() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-4">
                         <Link
-                          to={`/admin/users/${u.id}`}
+                          to={`/admin/users/${u.id}/edit`}
+                          onClick={(e) => e.stopPropagation()}
                           className="text-foreground-muted hover:text-foreground"
                         >
                           Edit
                         </Link>
                         <button
-                          onClick={() => setUserToDelete(u)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setUserToDelete(u);
+                          }}
                           className="cursor-pointer text-danger hover:underline"
                         >
                           Delete

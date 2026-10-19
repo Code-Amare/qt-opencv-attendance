@@ -12,6 +12,7 @@ import UserNew from "./pages/admin/UserNew.jsx";
 import Sessions from "./pages/admin/Sessions.jsx";
 import SessionDetail from "./pages/admin/SessionDetail.jsx";
 import LoginViaLink from "./pages/public/LoginViaLink.jsx";
+import UserDetail from "./pages/admin/UserDetail.jsx";
 
 const App = () => {
   return (
@@ -26,7 +27,8 @@ const App = () => {
       <Route element={<ProtectedRoute roles={["admin"]} />}>
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/users" element={<Users />} />
-        <Route path="/admin/users/:id" element={<UserEdit />} />
+        <Route path="/admin/users/:id" element={<UserDetail />} />
+        <Route path="/admin/users/:id/edit" element={<UserEdit />} />
         <Route path="/admin/users/new" element={<UserNew />} />
         <Route path="/admin/sessions" element={<Sessions />} />
         <Route path="/admin/sessions/:id" element={<SessionDetail />} />
