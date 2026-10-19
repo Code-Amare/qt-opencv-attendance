@@ -57,7 +57,7 @@ def send_login_link_email(user, code):
         "users/login_link.html",
         {
             "user": user,
-            "url": f"{settings.FRONTEND_URL}/login/email/verify/{code}/",
+            "url": f"{settings.FRONTEND_URL}/login/{code}/",
         },
     )
 

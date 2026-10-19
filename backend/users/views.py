@@ -317,7 +317,7 @@ class GUILoginView(APIView):
         )
 
 
-class LoginViaEmailView(APIView):
+class LoginViaLinkView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
