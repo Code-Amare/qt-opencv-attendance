@@ -710,3 +710,19 @@ class VerifyUserView(APIView):
             return send_cookies(request, user)
 
         return Response({"error": "Invalid code"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LogoutView(APIView):
+
+    def post(self, request):
+
+        response = Response(
+            {"message": "Logged out successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+        response.delete_cookie("access_token", path="/", samesite="Lax")
+        response.delete_cookie("refresh_token", path="/", samesite="Lax")
+        response.delete_cookie("csrftoken", path="/", samesite="Lax")
+
+        return response
