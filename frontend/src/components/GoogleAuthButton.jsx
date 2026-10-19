@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "react-hot-toast";
 
-const GoogleAuthButton = ({ nextPage = "/dashboard" }) => {
+const GoogleAuthButton = ({ nextPage = "/admin" }) => {
   const navigate = useNavigate();
   const { user, getUser } = useAuth();
 

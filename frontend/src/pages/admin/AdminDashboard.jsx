@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Alert from "../../components/Alert";
+import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
+import { useAuth } from "../../context/AuthContext";
 import { usePageTitle } from "../../context/PageTitleContext";
 
 const sessionStyle = {
@@ -66,9 +68,12 @@ function Donut({ counts, total }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { updatePageTitle } = usePageTitle();
+  const { logout: authLogout } = useAuth();
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     updatePageTitle("Dashboard");
@@ -88,6 +93,12 @@ export default function Dashboard() {
 
     load();
   }, []);
+
+  const onConfirmLogout = async () => {
+    setLoggingOut(true);
+    await authLogout(); // calls the API and resets the user state
+    navigate("/login", { replace: true });
+  };
 
   if (loading) return <p className="p-6 text-foreground-muted">Loading…</p>;
 
@@ -136,6 +147,13 @@ export default function Dashboard() {
           >
             Sessions
           </Link>
+          <button
+            type="button"
+            onClick={() => setConfirmLogout(true)}
+            className="cursor-pointer rounded-sm border border-white/10 px-4 py-2 text-sm text-danger hover:bg-background-elevated"
+          >
+            Logout
+          </button>
         </div>
       </div>
 
@@ -305,6 +323,16 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+
+      <ConfirmModal
+        open={confirmLogout}
+        title="Log out"
+        message="Are you sure you want to log out?"
+        confirmText="Log out"
+        loading={loggingOut}
+        onConfirm={onConfirmLogout}
+        onCancel={() => setConfirmLogout(false)}
+      />
     </div>
   );
 }
