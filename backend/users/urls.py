@@ -15,6 +15,8 @@ from .views import (
     ResetPasswordView,
     MeView,
     RefreshTokenView,
+    VerifyUserView,
+    GUILoginView,
 )
 
 urlpatterns = [
@@ -25,6 +27,8 @@ urlpatterns = [
     path("face-embedding/add/<int:user_id>/", SaveFaceEmbeddingView.as_view()),
     path("face-embedding/download/", RecognitionMapFileView.as_view()),
     path("login/", LoginView.as_view()),
+    path("login/verify/", VerifyUserView.as_view()),
+    path("login/gui/", GUILoginView.as_view()),
     path("login/email/<str:code>/", LoginViaEmailView.as_view()),
     path("auth/google/", GoogleAuthView.as_view()),
     path("forgot-password/", ForgotPasswordRequestView.as_view()),

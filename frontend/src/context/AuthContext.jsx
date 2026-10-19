@@ -70,6 +70,7 @@ export function AuthProvider({ children }) {
       setUser(formatUser(userData));
     } catch (error) {
       setUser(initialUser);
+      console.log(error.response.data.detail);
     } finally {
       setLoading(false);
     }

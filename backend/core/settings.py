@@ -34,8 +34,9 @@ SECRET_KEY = os.getenv(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
-
+ALLOWED_HOSTS = [
+    host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip()
+]
 
 # Application definition
 
@@ -229,6 +230,7 @@ CORS_ALLOW_CREDENTIALS = True
 
 print("CORS_ALLOWED_ORIGIN:", CORS_ALLOWED_ORIGINS)
 print("CSRF_TRUSTED_ORIGINS:", CSRF_TRUSTED_ORIGINS)
+print("ALLOWED_HOSTS:", ALLOWED_HOSTS)
 
 
 CONTACT_RECEIVER_EMAIL = "amaremisganacode@gmail.com"

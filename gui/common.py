@@ -139,7 +139,12 @@ QMessageBox QLabel { color: #E0E0E0; font-size: 15px; min-width: 280px; }
 QMessageBox QPushButton { min-width: 80px; }
 """
 
-MESSAGE_COLORS = {"error": "#EF4444", "warn": "#F59E0B", "ok": "#10B981"}
+MESSAGE_COLORS = {
+    "error": "#EF4444",
+    "warn": "#F59E0B",
+    "ok": "#10B981",
+    "info": "#3B82F6",
+}
 
 
 # -------------------------------------------------------------- helpers
@@ -343,33 +348,54 @@ class AuthContext:
 
         self.update_headers(session)
 
-    async def login(self, username_or_email, password, session, require_staff=True):
+    def _finish(self, data, session, require_staff):
+        if "tokens" not in data or "user" not in data:
+            return "error", data.get("error") or "Login failed"
+        if require_staff and not data["user"].get("is_staff"):
+            return "error", "This app is only for admin users"
+        self.add_tokens(data, session)
+        return "ok", ""
+
+    async def _post(self, session, url, payload):
         try:
-            async with session.post(
-                "users/login/",
-                json={
-                    "username_or_email": username_or_email,
-                    "password": password,
-                },
-            ) as resp:
+            async with session.post(url, json=payload) as resp:
                 try:
                     data = await resp.json()
                 except aiohttp.ContentTypeError:
                     data = {}
-                if resp.status >= 400:
-                    return False, data.get("error") or "Login failed"
+                return resp.status, data
         except aiohttp.ClientError:
-            return False, "Server error"
+            return None, {}
 
-        # e.g. two-factor: a login link was emailed, no tokens yet
-        if "tokens" not in data:
-            return False, data.get("error") or data.get("detail") or "Login failed"
+    async def login(self, username_or_email, password, session, require_staff=True):
+        status, data = await self._post(
+            session,
+            "users/login/gui/",
+            {"username_or_email": username_or_email, "password": password},
+        )
+        if status is None:
+            return "error", "Server error"
+        if status >= 400:
+            return "error", data.get("error") or "Login failed"
 
-        if require_staff and not data.get("user", {}).get("is_staff"):
-            return False, "This app is only for admin users"
+        # 2FA step: a code was emailed. This is info, not an error.
+        if data.get("twofa_required"):
+            return "code", data.get("detail") or data.get("error") or (
+                "A login code has been sent to your email."
+            )
+        return self._finish(data, session, require_staff)
 
-        self.add_tokens(data, session)
-        return True, ""
+    async def verify_code(self, username_or_email, code, session, require_staff=True):
+        status, data = await self._post(
+            session,
+            "users/login/verify/",
+            {"username_or_email": username_or_email, "code": code},
+        )
+        if status is None:
+            return "error", "Server error"
+        if status >= 400:
+            return "error", data.get("error") or "Verification failed"
+        return self._finish(data, session, require_staff)
 
     async def refresh_tokens(self, session):
         try:
@@ -416,18 +442,19 @@ class LoginPage(QWidget):
     def __init__(self, window):
         super().__init__()
         self.window_ = window
+        self.awaiting_code = False
 
         title = QLabel("Sign in")
         title.setObjectName("h1")
         subtitle = QLabel(f"Access your {self.window_.PRODUCT_NAME} workspace.")
         subtitle.setObjectName("muted")
 
-        user_label = QLabel("Username or email")
-        user_label.setObjectName("field")
+        self.user_label = QLabel("Username or email")
+        self.user_label.setObjectName("field")
         self.username_or_email = QLineEdit()
 
-        pass_label = QLabel("Password")
-        pass_label.setObjectName("field")
+        self.pass_label = QLabel("Password")
+        self.pass_label.setObjectName("field")
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.Password)
 
@@ -440,39 +467,78 @@ class LoginPage(QWidget):
         self.toggle_action.setToolTip("Show password")
         self.toggle_action.triggered.connect(self.toggle_password)
 
-        self.error_message = QLabel("")
-        self.error_message.setWordWrap(True)
-        self.error_message.setStyleSheet(
-            f"color: {MESSAGE_COLORS['error']}; font-size: 14px;"
-        )
+        # verification code (hidden until the server asks for it)
+        self.code_label = QLabel("Verification code")
+        self.code_label.setObjectName("field")
+        self.code = QLineEdit()
+        self.code.setPlaceholderText("Enter the code from your email")
+
+        self.message = QLabel("")
+        self.message.setWordWrap(True)
 
         self.login_btn = QPushButton("Login")
         self.login_btn.setCursor(Qt.PointingHandCursor)
-        self.login_btn.clicked.connect(self.on_login_click)
-        self.username_or_email.returnPressed.connect(self.on_login_click)
-        self.password.returnPressed.connect(self.on_login_click)
+        self.login_btn.clicked.connect(self.on_submit)
+
+        self.back_btn = QPushButton("Back")
+        self.back_btn.setObjectName("secondary")
+        self.back_btn.setCursor(Qt.PointingHandCursor)
+        self.back_btn.clicked.connect(self.reset_to_credentials)
+
+        for field in (self.username_or_email, self.password, self.code):
+            field.returnPressed.connect(self.on_submit)
 
         form = QWidget()
         form.setFixedWidth(380)
-        form_layout = QVBoxLayout(form)
-        form_layout.setContentsMargins(0, 0, 0, 0)
-        form_layout.setSpacing(6)
-        form_layout.addWidget(title)
-        form_layout.addWidget(subtitle)
-        form_layout.addSpacing(24)
-        form_layout.addWidget(user_label)
-        form_layout.addWidget(self.username_or_email)
-        form_layout.addSpacing(8)
-        form_layout.addWidget(pass_label)
-        form_layout.addWidget(self.password)
-        form_layout.addSpacing(8)
-        form_layout.addWidget(self.error_message)
-        form_layout.addWidget(self.login_btn)
+        fl = QVBoxLayout(form)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.setSpacing(6)
+        fl.addWidget(title)
+        fl.addWidget(subtitle)
+        fl.addSpacing(24)
+        fl.addWidget(self.user_label)
+        fl.addWidget(self.username_or_email)
+        fl.addSpacing(8)
+        fl.addWidget(self.pass_label)
+        fl.addWidget(self.password)
+        fl.addWidget(self.code_label)
+        fl.addWidget(self.code)
+        fl.addSpacing(8)
+        fl.addWidget(self.message)
+        fl.addWidget(self.login_btn)
+        fl.addWidget(self.back_btn)
 
         layout = QVBoxLayout(self)
         layout.addStretch()
         layout.addWidget(form, alignment=Qt.AlignHCenter)
         layout.addStretch()
+
+        self.reset_to_credentials()
+
+    # ---- helpers ----
+    def set_message(self, text, kind="error"):
+        color = MESSAGE_COLORS.get(kind, MESSAGE_COLORS["error"])
+        self.message.setStyleSheet(f"color: {color}; font-size: 14px;")
+        self.message.setText(text)
+
+    def _set_step(self, awaiting_code):
+        self.awaiting_code = awaiting_code
+        for w in (
+            self.user_label,
+            self.username_or_email,
+            self.pass_label,
+            self.password,
+        ):
+            w.setVisible(not awaiting_code)
+        for w in (self.code_label, self.code, self.back_btn):
+            w.setVisible(awaiting_code)
+        self.login_btn.setText("Verify" if awaiting_code else "Login")
+        (self.code if awaiting_code else self.username_or_email).setFocus()
+
+    def reset_to_credentials(self):
+        self.code.clear()
+        self.set_message("")
+        self._set_step(False)
 
     def toggle_password(self):
         if self.password.echoMode() == QLineEdit.Password:
@@ -484,24 +550,39 @@ class LoginPage(QWidget):
             self.toggle_action.setIcon(self.icon_show)
             self.toggle_action.setToolTip("Show password")
 
+    # ---- submit ----
     @asyncSlot()
-    async def on_login_click(self):
-        self.error_message.setText("")
-        self.window_.show_loader()
+    async def on_submit(self):
+        self.set_message("")
+        auth, win = self.window_.auth, self.window_
+        win.show_loader()
         try:
-            ok, msg = await self.window_.auth.login(
-                self.username_or_email.text(),
-                self.password.text(),
-                self.window_.session,
-                self.window_.REQUIRE_STAFF,
-            )
+            if self.awaiting_code:
+                status, msg = await auth.verify_code(
+                    self.username_or_email.text().strip(),
+                    self.code.text().strip(),
+                    win.session,
+                    win.REQUIRE_STAFF,
+                )
+            else:
+                status, msg = await auth.login(
+                    self.username_or_email.text().strip(),
+                    self.password.text(),
+                    win.session,
+                    win.REQUIRE_STAFF,
+                )
         finally:
-            self.window_.hide_loader()
-        if ok:
+            win.hide_loader()
+
+        if status == "ok":
             self.password.clear()
+            self.reset_to_credentials()
             self.login_successful.emit()
+        elif status == "code":
+            self._set_step(True)
+            self.set_message(msg, "info")  # info, not error
         else:
-            self.error_message.setText(msg)
+            self.set_message(msg, "error")
 
 
 # -------------------------------------------------------------- window

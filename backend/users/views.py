@@ -11,14 +11,13 @@ from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.middleware.csrf import get_token
 from django.db import transaction
-from .models import EmailLoginCode, ForgotPasswordRequest
+from .models import EmailLoginLink, ForgotPasswordRequest, EmailLoginCode
 from .serializers import UserCreateSerializer, UserSerializer
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.exceptions import TokenError
 from utils.emails import (
     send_forgot_password_email,
-    send_verification_code_email,
     send_verification_code_email,
     send_login_link_email,
     send_contact_admin_email,
@@ -199,10 +198,9 @@ class LoginView(APIView):
                 {"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        if user.two_factor_enabled:
-            email = user.email
+        if user.two_factor_enabled or not user.email_verified:
 
-            login_link = EmailLoginCode.objects.filter(user=user).first()
+            login_link = EmailLoginLink.objects.filter(user=user).first()
 
             if login_link and not login_link.is_expired():
                 return Response(
@@ -213,7 +211,7 @@ class LoginView(APIView):
                 )
             if login_link:
                 login_link.delete()
-            new_login_link = EmailLoginCode.objects.create(user=user)
+            new_login_link = EmailLoginLink.objects.create(user=user)
             try:
 
                 send_login_link_email(
@@ -254,6 +252,80 @@ class LoginView(APIView):
         return send_cookies(request, user)
 
 
+class GUILoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username_or_email = request.data.get("username_or_email", "").strip()
+        password = request.data.get("password", "")
+
+        if not username_or_email or not password:
+            return Response(
+                {"error": "Username and Password are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.filter(username=username_or_email).first()
+        if not user:
+            user = User.objects.filter(email=username_or_email).first()
+            if not user:
+                return Response(
+                    {"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST
+                )
+
+        if not user.check_password(password):
+            return Response(
+                {"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        login_code = EmailLoginCode.objects.filter(user=user).first()
+
+        if login_code and not login_code.is_expired():
+            return Response(
+                {"error": "Wait a mintue to request another OTP."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if login_code:
+            login_code.delete()
+        new_login_code = EmailLoginCode.objects.create(user=user)
+        try:
+
+            send_verification_code_email(
+                user=user,
+                code=new_login_code.code,
+            )
+
+        except Exception:
+
+            new_login_code.delete()
+
+            return Response(
+                {
+                    "error": (
+                        "Unable to send the login link. " "Please try again later."
+                    )
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        if user.email_verified:
+            return Response(
+                {
+                    "error": "Email not verified yet.",
+                    "twofa_required": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            {
+                "detail": "OTP has been sent, check your inbox.",
+                "twofa_required": True,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class LoginViaEmailView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -264,7 +336,7 @@ class LoginViaEmailView(APIView):
                 {"error": "Invalid login link."}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        login_link = EmailLoginCode.objects.filter(code=code).first()
+        login_link = EmailLoginLink.objects.filter(code=code).first()
 
         if not login_link or login_link.is_expired():
             return Response(
@@ -607,3 +679,43 @@ class ResetPasswordView(APIView):
             {"detail": "Your password has been reset successfully."},
             status=status.HTTP_200_OK,
         )
+
+
+class VerifyUserView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username_or_email = request.data.get("username_or_email", "").strip()
+        code = request.data.get("code", "").strip()
+
+        if not username_or_email or not code:
+            return Response(
+                {"error": "Username/email and code are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.filter(username=username_or_email).first()
+        if not user:
+            user = User.objects.filter(email=username_or_email).first()
+
+        if not user:
+            return Response(
+                {"error": "Invalid credientials"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        login_code = EmailLoginCode.objects.filter(user=user).first()
+
+        if login_code and login_code.is_expired():
+            return Response(
+                {"error": "Code expired"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if login_code and login_code.verify(code):
+            with transaction.atomic():
+                login_code.delete()
+                user.email_verified = True
+                user.save(update_fields=["email_verified"])
+
+            return send_cookies(request, user)
+
+        return Response({"error": "Invalid code"}, status=status.HTTP_400_BAD_REQUEST)
