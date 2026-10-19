@@ -2,6 +2,7 @@ from django.template.loader import render_to_string
 from django.conf import settings
 from utils.send_mail import send_email
 
+
 def send_verification_code_email(user, code):
     html_content = render_to_string(
         "templates/users/verify_email.html",
@@ -17,13 +18,14 @@ def send_verification_code_email(user, code):
         html_content=html_content,
     )
 
+
 def send_forgot_password_email(user, code):
     html_content = render_to_string(
         "users/forgot_password.html",
         {
             "user": user,
-            "code": code,
-        }
+            "url": f"{settings.FRONTEND_URL}/reset-password/{code}/",
+        },
     )
 
     send_email(
@@ -64,6 +66,7 @@ def send_login_link_email(user, code):
         subject="Your secure login link",
         html_content=html_content,
     )
+
 
 def send_contact_admin_email(name, email, subject, message):
     html_content = render_to_string(

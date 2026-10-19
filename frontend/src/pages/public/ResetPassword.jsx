@@ -33,12 +33,18 @@ const ResetPassword = () => {
     e.preventDefault();
     setError("");
 
-    if (form.password.length < 8) return setError("Your password must be at least 8 characters long.");
-    if (form.password !== form.confirm) return setError("The two passwords don't match.");
+    if (form.password.length < 8)
+      return setError("Your password must be at least 8 characters long.");
+    if (form.password !== form.confirm)
+      return setError("The two passwords don't match.");
 
     setLoading(true);
     try {
-      await api.post(`/users/reset-password/${code}/`, { password: form.password }, { skipAuthRefresh: true });
+      await api.post(
+        `/users/reset-password/${code}/`,
+        { password: form.password },
+        { skipAuthRefresh: true },
+      );
       setStatus("done");
     } catch (err) {
       const msg = getErrorMessage(err);
@@ -55,65 +61,104 @@ const ResetPassword = () => {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="border-b border-white/5 px-6 py-4">
-        <Link to="/" className="text-base font-semibold tracking-tight">FaceCall</Link>
+        <Link to="/" className="text-base font-semibold tracking-tight">
+          FaceCall
+        </Link>
       </header>
 
       <main className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm">
           {status === "checking" && (
-            <p className="text-sm text-foreground-muted">Verifying your link…</p>
+            <p className="text-sm text-foreground-muted">
+              Verifying your link…
+            </p>
           )}
 
           {status === "invalid" && (
             <>
-              <h1 className="text-2xl font-semibold tracking-tight">Link invalid or expired</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Link invalid or expired
+              </h1>
               <div className="mt-4">
                 <Alert variant="error" title="This link can't be used">
-                  Password reset links expire and can only be used once. Request a new one to continue.
+                  Password reset links expire and can only be used once. Request
+                  a new one to continue.
                 </Alert>
               </div>
-              <Link to="/forgot-password" className={primaryLink}>Request new link</Link>
+              <Link to="/forgot-password" className={primaryLink}>
+                Request new link
+              </Link>
             </>
           )}
 
           {status === "done" && (
             <>
-              <h1 className="text-2xl font-semibold tracking-tight">Password updated</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Password updated
+              </h1>
               <div className="mt-4">
                 <Alert variant="success" title="All set">
                   Your password has been reset. Sign in with your new password.
                 </Alert>
               </div>
-              <Link to="/login" className={primaryLink}>Sign in</Link>
+              <Link to="/login" className={primaryLink}>
+                Sign in
+              </Link>
             </>
           )}
 
           {status === "valid" && (
             <>
-              <h1 className="text-2xl font-semibold tracking-tight">Reset password</h1>
-              <p className="mt-1 text-sm text-foreground-muted">Choose a new password for your account.</p>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Reset password
+              </h1>
+              <p className="mt-1 text-sm text-foreground-muted">
+                Choose a new password for your account.
+              </p>
 
               <form onSubmit={onSubmit} noValidate className="mt-8 space-y-4">
                 {error && (
-                  <Alert variant="error" title="Couldn't reset password" onClose={() => setError("")}>
+                  <Alert
+                    variant="error"
+                    title="Couldn't reset password"
+                    onClose={() => setError("")}
+                  >
                     {error}
                   </Alert>
                 )}
 
                 <div>
-                  <label htmlFor="password" className="mb-1.5 block text-sm text-foreground-muted">
+                  <label
+                    htmlFor="password"
+                    className="mb-1.5 block text-sm text-foreground-muted"
+                  >
                     New password
                   </label>
-                  <PasswordInput id="password" name="password" autoComplete="new-password"
-                    value={form.password} onChange={onChange} invalid={!!error} />
+                  <PasswordInput
+                    id="password"
+                    name="password"
+                    autoComplete="new-password"
+                    value={form.password}
+                    onChange={onChange}
+                    invalid={!!error}
+                  />
                 </div>
 
                 <div>
-                  <label htmlFor="confirm" className="mb-1.5 block text-sm text-foreground-muted">
+                  <label
+                    htmlFor="confirm"
+                    className="mb-1.5 block text-sm text-foreground-muted"
+                  >
                     Confirm password
                   </label>
-                  <PasswordInput id="confirm" name="confirm" autoComplete="new-password"
-                    value={form.confirm} onChange={onChange} invalid={!!error} />
+                  <PasswordInput
+                    id="confirm"
+                    name="confirm"
+                    autoComplete="new-password"
+                    value={form.confirm}
+                    onChange={onChange}
+                    invalid={!!error}
+                  />
                 </div>
 
                 <button

@@ -232,15 +232,6 @@ class LoginView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
-            if user.email_verified:
-                return Response(
-                    {
-                        "error": "Email not verified yet.",
-                        "twofa_required": True,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-
             return Response(
                 {
                     "detail": "A login link has been sent to your email address.",
