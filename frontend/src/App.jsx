@@ -6,6 +6,7 @@ import ForgotPassword from "./pages/public/ForgotPassword.jsx";
 import ResetPassword from "./pages/public/ResetPassword.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import ProtectedRoute from "./components/ProtectedPagesWrapper.jsx";
+import DashboardLayout from "./components/DashboardLayout.jsx";
 import Users from "./pages/admin/Users.jsx";
 import UserEdit from "./pages/admin/UserEdit.jsx";
 import UserNew from "./pages/admin/UserNew.jsx";
@@ -25,13 +26,26 @@ const App = () => {
       <Route path="/login/:code" element={<LoginViaLink />} />
 
       <Route element={<ProtectedRoute roles={["admin"]} />}>
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin/users" element={<Users />} />
-        <Route path="/admin/users/:id" element={<UserDetail />} />
-        <Route path="/admin/users/:id/edit" element={<UserEdit />} />
-        <Route path="/admin/users/new" element={<UserNew />} />
-        <Route path="/admin/sessions" element={<Sessions />} />
-        <Route path="/admin/sessions/:id" element={<SessionDetail />} />
+        <Route element={<DashboardLayout />}>
+          <Route path="/admin" element={<AdminDashboard />} />
+
+          <Route path="/admin/users" element={<Users />} />
+          <Route path="/admin/users/new" element={<UserNew />} />
+          <Route path="/admin/users/:id" element={<UserDetail />} />
+          <Route path="/admin/users/:id/edit" element={<UserEdit />} />
+
+          <Route path="/admin/sessions" element={<Sessions />} />
+          <Route path="/admin/sessions/:id" element={<SessionDetail />} />
+
+          {/* pages still to build
+          <Route path="/admin/releases" element={<Releases />} />
+          <Route path="/admin/releases/new" element={<ReleaseForm />} />
+          <Route path="/admin/releases/:id" element={<ReleaseForm />} />
+          <Route path="/admin/settings" element={<SiteSettings />} />
+          <Route path="/admin/profile" element={<Profile />} />
+          <Route path="/admin/profile/edit" element={<ProfileEdit />} />
+          */}
+        </Route>
       </Route>
     </Routes>
   );

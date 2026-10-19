@@ -6,23 +6,25 @@ import ToastProvider from "./components/ToastProvider.jsx";
 import { BrowserRouter } from "react-router-dom";
 import { PageTitleProvider } from "./context/PageTitleContext.jsx";
 import { SiteInfoProvider } from "./context/SiteInfoContext.jsx";
-import {AuthProvider} from "./context/AuthContext.jsx";
+import { AuthProvider } from "./context/AuthContext.jsx";
 import { GoogleOAuthProvider } from "@react-oauth/google";
-
+import ThemeProvider from "./context/ThemeContext.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <BrowserRouter>
-        <ToastProvider />
-        <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
+      <ToastProvider />
+      <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
         <AuthProvider>
-            <SiteInfoProvider>
-                <PageTitleProvider>
-                    <App />
-                </PageTitleProvider>
-            </SiteInfoProvider>
+          <SiteInfoProvider>
+            <PageTitleProvider>
+              <ThemeProvider>
+                <App />
+              </ThemeProvider>
+            </PageTitleProvider>
+          </SiteInfoProvider>
         </AuthProvider>
-        </GoogleOAuthProvider>
+      </GoogleOAuthProvider>
     </BrowserRouter>
   </StrictMode>,
 );
