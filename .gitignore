@@ -2,7 +2,7 @@
 .idea/
 
 # Python virtual environment
-backend/venv/
+backend/backend-venv/
 
 # Environment variables and secrets
 backend/.env
@@ -25,6 +25,7 @@ gui/face_recognizer.yml
 gui/face_embeddings.npz
 gui/assets
 gui/insightface_root
+gui/gui-venv
 
 build
 
