@@ -11,6 +11,7 @@ import UserEdit from "./pages/admin/UserEdit.jsx";
 import UserNew from "./pages/admin/UserNew.jsx";
 import Sessions from "./pages/admin/Sessions.jsx";
 import SessionDetail from "./pages/admin/SessionDetail.jsx";
+import LoginViaLink from "./pages/public/LoginViaLink.jsx";
 
 const App = () => {
   return (
@@ -20,6 +21,8 @@ const App = () => {
       <Route path="/contact" element={<Contact />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:code" element={<ResetPassword />} />
+      <Route path="/login/:code" element={<LoginViaLink />} />
+
       <Route element={<ProtectedRoute roles={["admin"]} />}>
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/users" element={<Users />} />
