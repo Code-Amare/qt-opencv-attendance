@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Alert from "../../components/Alert";
 import ConfirmModal from "../../components/ConfirmModal";
@@ -22,6 +22,7 @@ export default function UserEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { updatePageTitle } = usePageTitle();
+  const fileInputRef = useRef(null);
 
   const [form, setForm] = useState(null);
   const [info, setInfo] = useState({
@@ -31,6 +32,7 @@ export default function UserEdit() {
   const [attendances, setAttendances] = useState([]);
   const [currentPicture, setCurrentPicture] = useState(null);
   const [profilePicture, setProfilePicture] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
@@ -41,6 +43,14 @@ export default function UserEdit() {
   useEffect(() => {
     updatePageTitle("Edit user");
   }, []);
+
+  // preview of a newly selected image
+  useEffect(() => {
+    if (!profilePicture) return setPreview(null);
+    const url = URL.createObjectURL(profilePicture);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [profilePicture]);
 
   useEffect(() => {
     const load = async () => {
@@ -116,13 +126,11 @@ export default function UserEdit() {
       await api.patch(`/admin/users/${id}/`, formData);
 
       if (profilePicture) {
-        // Refresh the preview from the server so it shows the new image.
+        // Refresh the picture from the server so it shows the saved image.
         const res = await api.get(`/admin/users/${id}/`);
         setCurrentPicture(res.data.user.profile_picture ?? null);
         setProfilePicture(null);
-        // Clear the file input element too.
-        const fileInput = document.getElementById("profile_picture");
-        if (fileInput) fileInput.value = "";
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
 
       setNotice("User updated.");
@@ -165,6 +173,7 @@ export default function UserEdit() {
   }
 
   const fullName = `${form.first_name} ${form.last_name}`.trim() || form.email;
+  const shownPicture = preview || currentPicture;
 
   return (
     <div className="space-y-8 p-6">
@@ -198,37 +207,38 @@ export default function UserEdit() {
             </Alert>
           )}
 
-          {/* Profile picture */}
-          <div>
-            <label htmlFor="profile_picture" className={labelClass}>
-              Profile picture
-            </label>
-            <div className="flex items-center gap-4">
-              {currentPicture ? (
+          {/* Profile picture: the circle is the only clickable thing */}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Change profile picture"
+              className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full border border-white/10 bg-background-elevated"
+            >
+              {shownPicture ? (
                 <img
-                  src={currentPicture}
+                  src={shownPicture}
                   alt={fullName}
-                  className="h-16 w-16 shrink-0 rounded-full border border-white/10 object-cover"
+                  className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-white/10 bg-background-elevated text-xs text-foreground-subtle">
+                <span className="flex h-full w-full items-center justify-center text-xs text-foreground-subtle">
                   No photo
-                </div>
+                </span>
               )}
-              <input
-                id="profile_picture"
-                name="profile_picture"
-                type="file"
-                accept="image/*"
-                onChange={onFileChange}
-                className={fieldClass}
-              />
-            </div>
-            {profilePicture && (
-              <p className="mt-1.5 text-xs text-foreground-muted">
-                Selected: {profilePicture.name}
-              </p>
-            )}
+              <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs text-white opacity-0 transition group-hover:opacity-100">
+                {shownPicture ? "Change" : "Upload"}
+              </span>
+            </button>
+            <input
+              ref={fileInputRef}
+              id="profile_picture"
+              name="profile_picture"
+              type="file"
+              accept="image/*"
+              onChange={onFileChange}
+              className="hidden"
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
