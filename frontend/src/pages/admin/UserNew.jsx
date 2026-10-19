@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Alert from "../../components/Alert";
 import PasswordInput from "../../components/PasswordInput";
@@ -15,6 +15,7 @@ const labelClass = "mb-1.5 block text-sm text-foreground-muted";
 export default function UserNew() {
   const navigate = useNavigate();
   const { updatePageTitle } = usePageTitle();
+  const fileInputRef = useRef(null);
 
   const [form, setForm] = useState({
     first_name: "",
@@ -26,6 +27,8 @@ export default function UserNew() {
     date_of_birth: "",
     is_active: true,
   });
+  const [profilePicture, setProfilePicture] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -33,9 +36,22 @@ export default function UserNew() {
     updatePageTitle("Add user");
   }, []);
 
+  // preview of the selected image
+  useEffect(() => {
+    if (!profilePicture) return setPreview(null);
+    const url = URL.createObjectURL(profilePicture);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [profilePicture]);
+
   const onChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm({ ...form, [name]: type === "checkbox" ? checked : value });
+    if (error) setError("");
+  };
+
+  const onFileChange = (e) => {
+    setProfilePicture(e.target.files[0] ?? null);
     if (error) setError("");
   };
 
@@ -49,11 +65,23 @@ export default function UserNew() {
 
     setLoading(true);
     try {
-      const payload = {
-        ...form,
-        date_of_birth: form.date_of_birth || null, // empty date must be null
-      };
-      const res = await api.post("/admin/users/", payload);
+      const formData = new FormData();
+      formData.append("first_name", form.first_name);
+      formData.append("last_name", form.last_name);
+      formData.append("email", form.email);
+      formData.append("password", form.password);
+      formData.append("section", form.section);
+      formData.append("phone_number", form.phone_number);
+      // an empty date can't be sent as "" in multipart, so omit it
+      if (form.date_of_birth) {
+        formData.append("date_of_birth", form.date_of_birth);
+      }
+      formData.append("is_active", form.is_active ? "True" : "False");
+      if (profilePicture) {
+        formData.append("profile_picture", profilePicture);
+      }
+
+      const res = await api.post("/admin/users/", formData);
       navigate(`/admin/users/${res.data.user.id}`);
     } catch (err) {
       setError(getErrorMessage(err, "Failed to create the user."));
@@ -84,6 +112,40 @@ export default function UserNew() {
             {error}
           </Alert>
         )}
+
+        {/* Profile picture: the circle is the only clickable thing */}
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Choose profile picture"
+            className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full border border-white/10 bg-background-elevated"
+          >
+            {preview ? (
+              <img
+                src={preview}
+                alt="Profile preview"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center text-xs text-foreground-subtle">
+                No photo
+              </span>
+            )}
+            <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs text-white opacity-0 transition group-hover:opacity-100">
+              {preview ? "Change" : "Upload"}
+            </span>
+          </button>
+          <input
+            ref={fileInputRef}
+            id="profile_picture"
+            name="profile_picture"
+            type="file"
+            accept="image/*"
+            onChange={onFileChange}
+            className="hidden"
+          />
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>

@@ -273,8 +273,13 @@ class AdminUserListView(APIView):
             username=username, email=email, password=password
         )
         for field in USER_EDITABLE_FIELDS:
-            if field in request.data and field != "email":
+            if field in request.data and field not in ("email", "profile_picture"):
                 setattr(user, field, request.data[field])
+
+        picture = request.FILES.get("profile_picture")
+        if picture:
+            user.profile_picture = picture  # CloudinaryField uploads it on save
+
         user.save()
 
         return Response(
