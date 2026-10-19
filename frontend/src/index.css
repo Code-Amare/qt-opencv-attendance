@@ -1,52 +1,180 @@
 @import "tailwindcss";
 
+/* Make `dark:` classes follow the selected theme (not just the OS setting) */
+@custom-variant dark (&:where(.dark, .dark *));
 
+/* ---------- Tailwind color names -> theme variables ---------- */
+@theme inline {
+  --color-background: var(--t-background);
+  --color-background-surface: var(--t-surface);
+  --color-background-elevated: var(--t-elevated);
+  --color-background-subtle: var(--t-subtle);
+  --color-surface: var(--t-surface);
+  --color-surface-hover: var(--t-action-hover);
+
+  --color-foreground: var(--t-foreground);
+  --color-foreground-muted: var(--t-foreground-muted);
+  --color-foreground-subtle: var(--t-foreground-subtle);
+  --color-muted-foreground: var(--t-foreground-muted);
+
+  --color-primary: var(--t-primary);
+  --color-primary-hover: var(--t-primary-hover);
+  --color-primary-light: var(--t-primary-light);
+  --color-primary-dark: var(--t-primary-dark);
+  --color-primary-foreground: var(--t-primary-foreground);
+  --color-primary-subtle: var(--t-primary-subtle);
+
+  --color-action-hover: var(--t-action-hover);
+  --color-action-active: var(--t-action-active);
+
+  --color-border: var(--t-border);
+  --color-border-strong: var(--t-border-strong);
+
+  --color-success: var(--t-success);
+  --color-danger: var(--t-danger);
+  --color-warning: var(--t-warning);
+  --color-info: var(--t-info);
+}
+
+/* ---------- Themes ---------- */
 @layer base {
-  :root {
-    /* Core background hierarchy */
-    --color-background: #121215;
-    --color-background-surface: #18181C;
-    --color-background-elevated: #1F1F23;
-    --color-background-subtle: #222226;
+  /* Dark (default, your original palette) */
+  :root,
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --t-background: #121215;
+    --t-surface: #18181c;
+    --t-elevated: #1f1f23;
+    --t-subtle: #222226;
+    --t-foreground: #e0e0e0;
+    --t-foreground-muted: #b0b0b5;
+    --t-foreground-subtle: #6b6b73;
+    --t-primary: #5b21b6;
+    --t-primary-hover: #6d28d9;
+    --t-primary-light: #3b1443;
+    --t-primary-dark: #4a154b;
+    --t-primary-foreground: #ffffff;
+    --t-primary-subtle: rgb(139 92 246 / 0.16);
+    --t-action-hover: #1f1f23;
+    --t-action-active: #2b2b36;
+    --t-border: rgb(255 255 255 / 0.07);
+    --t-border-strong: rgb(255 255 255 / 0.14);
+    --t-success: #10b981;
+    --t-danger: #ef4444;
+    --t-warning: #f59e0b;
+    --t-info: #3b82f6;
+  }
 
-    /* Typography & Foreground */
-    --color-foreground: #E0E0E0;
-    --color-foreground-muted: #B0B0B5;
-    --color-foreground-subtle: #6B6B73;
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --t-background: #f6f6f9;
+    --t-surface: #ffffff;
+    --t-elevated: #fafafc;
+    --t-subtle: #efeff4;
+    --t-foreground: #1c1c22;
+    --t-foreground-muted: #55555e;
+    --t-foreground-subtle: #8a8a94;
+    --t-primary: #5b21b6;
+    --t-primary-hover: #4c1d95;
+    --t-primary-light: #ede9fe;
+    --t-primary-dark: #4c1d95;
+    --t-primary-foreground: #ffffff;
+    --t-primary-subtle: #ede9fe;
+    --t-action-hover: #f0f0f5;
+    --t-action-active: #e6e6ee;
+    --t-border: rgb(0 0 0 / 0.08);
+    --t-border-strong: rgb(0 0 0 / 0.16);
+    --t-success: #059669;
+    --t-danger: #dc2626;
+    --t-warning: #d97706;
+    --t-info: #2563eb;
+  }
 
-    /* Primary Accents (Deep Purple) */
-    --color-primary: #5B21B6;
-    --color-primary-hover: #6D28D9;
-    --color-primary-light: #3B1443;
-    --color-primary-dark: #4A154B;
+  :root[data-theme="midnight"] {
+    color-scheme: dark;
+    --t-background: #0b1020;
+    --t-surface: #111830;
+    --t-elevated: #162040;
+    --t-subtle: #1b2650;
+    --t-foreground: #e2e8f5;
+    --t-foreground-muted: #a3afc8;
+    --t-foreground-subtle: #66728f;
+    --t-primary: #2563eb;
+    --t-primary-hover: #3b82f6;
+    --t-primary-light: #12234f;
+    --t-primary-dark: #1e3a8a;
+    --t-primary-foreground: #ffffff;
+    --t-primary-subtle: rgb(59 130 246 / 0.16);
+    --t-action-hover: #162040;
+    --t-action-active: #1f2c58;
+    --t-border: rgb(148 163 255 / 0.1);
+    --t-border-strong: rgb(148 163 255 / 0.2);
+    --t-success: #10b981;
+    --t-danger: #ef4444;
+    --t-warning: #f59e0b;
+    --t-info: #60a5fa;
+  }
 
-    /* Interactive Hover States */
-    --color-action-hover: #1F1F23;
-    --color-action-active: #2B2B36;
+  :root[data-theme="forest"] {
+    color-scheme: dark;
+    --t-background: #0e1512;
+    --t-surface: #131d18;
+    --t-elevated: #1a2620;
+    --t-subtle: #1f2d26;
+    --t-foreground: #e1ebe5;
+    --t-foreground-muted: #a6b8ad;
+    --t-foreground-subtle: #6b7f73;
+    --t-primary: #059669;
+    --t-primary-hover: #10b981;
+    --t-primary-light: #0f3d2e;
+    --t-primary-dark: #065f46;
+    --t-primary-foreground: #ffffff;
+    --t-primary-subtle: rgb(16 185 129 / 0.16);
+    --t-action-hover: #1a2620;
+    --t-action-active: #243630;
+    --t-border: rgb(167 243 208 / 0.09);
+    --t-border-strong: rgb(167 243 208 / 0.18);
+    --t-success: #34d399;
+    --t-danger: #ef4444;
+    --t-warning: #f59e0b;
+    --t-info: #3b82f6;
+  }
 
-    /* Status Colors */
-    --color-success: #10B981;
-    --color-danger: #EF4444;
-    --color-warning: #F59E0B;
-    --color-info: #3B82F6;
+  :root[data-theme="rose"] {
+    color-scheme: light;
+    --t-background: #fbf3f4;
+    --t-surface: #ffffff;
+    --t-elevated: #fff9fa;
+    --t-subtle: #f7e8ea;
+    --t-foreground: #2a1a1d;
+    --t-foreground-muted: #6b4f55;
+    --t-foreground-subtle: #a08a8f;
+    --t-primary: #be123c;
+    --t-primary-hover: #9f1239;
+    --t-primary-light: #ffe4e9;
+    --t-primary-dark: #881337;
+    --t-primary-foreground: #ffffff;
+    --t-primary-subtle: #ffe4e9;
+    --t-action-hover: #fbeef0;
+    --t-action-active: #f5dde1;
+    --t-border: rgb(120 40 55 / 0.12);
+    --t-border-strong: rgb(120 40 55 / 0.22);
+    --t-success: #059669;
+    --t-danger: #dc2626;
+    --t-warning: #d97706;
+    --t-info: #2563eb;
+  }
+
+  /* Soft default border color everywhere (v4 defaults to currentColor) */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--t-border);
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
   }
 }
-@theme {
-  --color-background: #121215;
-  --color-background-surface: #18181C;
-  --color-background-elevated: #1F1F23;
-  --color-background-subtle: #222226;
-  --color-foreground: #E0E0E0;
-  --color-foreground-muted: #B0B0B5;
-  --color-foreground-subtle: #6B6B73;
-  --color-primary: #5B21B6;
-  --color-primary-hover: #6D28D9;
-  --color-primary-light: #3B1443;
-  --color-primary-dark: #4A154B;
-  --color-danger: #EF4444;
-  --color-success: #10B981;
-  --color-warning: #F59E0B;
-  --color-info: #3B82F6;
-}
-
-body { @apply bg-background text-foreground antialiased; }

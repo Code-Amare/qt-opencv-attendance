@@ -8,6 +8,21 @@
   </head>
   <body>
     <div id="root"></div>
+      <script>
+      (function () {
+        try {
+          var themes = ["light", "dark", "midnight", "forest", "rose"];
+          var dark = ["dark", "midnight", "forest"];
+          var t = localStorage.getItem("theme");
+          if (themes.indexOf(t) === -1) {
+            t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+          var root = document.documentElement;
+          root.dataset.theme = t;
+          root.classList.toggle("dark", dark.indexOf(t) !== -1);
+        } catch (e) {}
+      })();
+      </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
