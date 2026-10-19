@@ -1,5 +1,6 @@
 from insightface.app import FaceAnalysis
 import asyncio
+import ctypes
 import sys
 from datetime import datetime
 from string import Template
@@ -32,7 +33,11 @@ from pyqtspinner.spinner import WaitingSpinner
 from qasync import QEventLoop, asyncSlot
 
 from anti_spoof import is_face_real
-from utils import TitleBar, default_avatar, get_image, icon_from_svg
+from utils import TitleBar, app_icon, default_avatar, get_image
+
+# Windows groups taskbar buttons by this id. Without it, running as
+# `python app.py` shows the Python icon instead of ours.
+APP_USER_MODEL_ID = "facecall.app"
 
 # ---------------------------------------------------------------- font sizes (px)
 # Change these numbers to resize the text everywhere.
@@ -58,7 +63,7 @@ FONT = {
 # primary #5B21B6 | primary-hover #6D28D9
 # success #10B981 | warning #F59E0B | danger #EF4444 | info #3B82F6
 STYLE = Template("""
-QMainWindow, QWidget#central { background: #121215; }
+QMainWindow, QWidget#central { background: #252525; }
 QWidget { font-family: Poppins, "Segoe UI", sans-serif; }
 
 QLabel { color: #E0E0E0; font-size: $bodypx; }
@@ -121,7 +126,7 @@ QCheckBox::indicator:checked { border: 1px solid #6D28D9; background: #5B21B6; }
 QCheckBox::indicator:disabled { background: #18181C; }
 
 QTableWidget, QTableView {
-    background: #18181C;
+    background: #1f1f1f;
     color: #E0E0E0;
     border: 1px solid rgba(255, 255, 255, 25);
     border-radius: 2px;
@@ -634,7 +639,7 @@ class BaseWindow(QMainWindow):
 
         self.setGeometry(0, 0, 1280, 720)
         self.setWindowTitle(self.PRODUCT_NAME)
-        self.setWindowIcon(icon_from_svg())
+        self.setWindowIcon(app_icon())
 
         self._build_shell()
         self.build_pages()
@@ -749,8 +754,17 @@ async def _serve(window):
 
 
 def run(window_cls):
+    # Must happen before the QApplication / first window is created.
+    if sys.platform == "win32":
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+
+    # Sharp icons/pixmaps on scaled (125%/150%) Windows displays.
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    app.setWindowIcon(app_icon())
 
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
