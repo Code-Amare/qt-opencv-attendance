@@ -22,7 +22,7 @@ const ForgotPassword = () => {
 
     if (!email.trim()) return setError("Enter the email address linked to your account.");
 
-    setLoading(true);
+    setLoading(true); 
     try {
       const res = await api.post("/users/forgot-password/", { email }, { skipAuthRefresh: true });
       setMessage(res.data.detail);
