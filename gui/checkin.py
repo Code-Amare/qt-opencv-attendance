@@ -26,6 +26,7 @@ from PyQt5.QtWidgets import (
 )
 from qasync import asyncSlot
 from common import (
+    FONT,
     MESSAGE_COLORS,
     BaseWindow,
     CameraPage,
@@ -34,7 +35,6 @@ from common import (
     largest_face,
     run,
 )
-
 
 
 class SessionsPage(QWidget):
@@ -74,7 +74,7 @@ class SessionsPage(QWidget):
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["NAME", "STARTS", "ENDS", "STATUS"])
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(44)
+        self.table.verticalHeader().setDefaultSectionSize(52)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -147,7 +147,7 @@ class SessionsPage(QWidget):
     # ---------- helpers ----------
     def set_message(self, text, kind="error"):
         color = MESSAGE_COLORS.get(kind, MESSAGE_COLORS["error"])
-        self.message.setStyleSheet(f"color: {color}; font-size: 14px;")
+        self.message.setStyleSheet(f"color: {color}; font-size: {FONT['message']}px;")
         self.message.setText(text)
 
     def update_local_state(self):

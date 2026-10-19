@@ -2,6 +2,7 @@ from insightface.app import FaceAnalysis
 import asyncio
 import sys
 from datetime import datetime
+from string import Template
 
 import aiohttp
 import cv2
@@ -33,21 +34,38 @@ from qasync import QEventLoop, asyncSlot
 from anti_spoof import is_face_real
 from utils import TitleBar, default_avatar, get_image, icon_from_svg
 
+# ---------------------------------------------------------------- font sizes (px)
+# Change these numbers to resize the text everywhere.
+FONT = {
+    "h1": 34,  # page titles
+    "body": 18,  # default text (QLabel, radio/checkbox)
+    "muted": 17,  # subtitles / secondary text
+    "field": 16,  # form labels
+    "subtle": 15,  # hints, ids
+    "input": 18,  # text inputs
+    "button": 18,  # buttons
+    "message": 16,  # error / info messages under forms
+    "table": 17,  # table cells
+    "table_header": 14,  # table column headers
+    "small_button": 16,  # buttons inside table rows
+    "dialog": 17,  # message boxes
+}
+
 # ---------------------------------------------------------------- theme
 # Colors match the web frontend tokens:
 # background #121215 | surface #18181C | elevated #1F1F23 | subtle #222226
 # foreground #E0E0E0 | muted #B0B0B5 | subtle #6B6B73
 # primary #5B21B6 | primary-hover #6D28D9
 # success #10B981 | warning #F59E0B | danger #EF4444 | info #3B82F6
-STYLE = """
+STYLE = Template("""
 QMainWindow, QWidget#central { background: #121215; }
 QWidget { font-family: Poppins, "Segoe UI", sans-serif; }
 
-QLabel { color: #E0E0E0; font-size: 16px; }
-QLabel#h1 { font-size: 28px; font-weight: 600; }
-QLabel#muted { color: #B0B0B5; font-size: 15px; }
-QLabel#field { color: #B0B0B5; font-size: 14px; }
-QLabel#subtle { color: #6B6B73; font-size: 13px; }
+QLabel { color: #E0E0E0; font-size: $bodypx; }
+QLabel#h1 { font-size: $h1px; font-weight: 600; }
+QLabel#muted { color: #B0B0B5; font-size: $mutedpx; }
+QLabel#field { color: #B0B0B5; font-size: $fieldpx; }
+QLabel#subtle { color: #6B6B73; font-size: $subtlepx; }
 
 QFrame#panel {
     background: #18181C;
@@ -61,7 +79,7 @@ QLineEdit {
     border: 1px solid rgba(255, 255, 255, 25);
     border-radius: 2px;
     padding: 10px 12px;
-    font-size: 16px;
+    font-size: $inputpx;
     selection-background-color: #5B21B6;
 }
 QLineEdit:focus { border: 1px solid #6D28D9; }
@@ -72,7 +90,7 @@ QPushButton {
     border: none;
     border-radius: 2px;
     padding: 10px 18px;
-    font-size: 16px;
+    font-size: $buttonpx;
     font-weight: 500;
 }
 QPushButton:hover { background: #6D28D9; }
@@ -84,7 +102,7 @@ QPushButton#secondary {
 }
 QPushButton#secondary:hover { background: #1F1F23; }
 
-QRadioButton, QCheckBox { color: #E0E0E0; font-size: 16px; spacing: 10px; }
+QRadioButton, QCheckBox { color: #E0E0E0; font-size: $bodypx; spacing: 10px; }
 QRadioButton:disabled, QCheckBox:disabled { color: #6B6B73; }
 QRadioButton::indicator {
     width: 16px; height: 16px; border-radius: 9px;
@@ -107,7 +125,7 @@ QTableWidget, QTableView {
     color: #E0E0E0;
     border: 1px solid rgba(255, 255, 255, 25);
     border-radius: 2px;
-    font-size: 15px;
+    font-size: $tablepx;
     outline: 0;
 }
 QTableWidget::item, QTableView::item {
@@ -125,7 +143,7 @@ QHeaderView::section {
     border: none;
     border-bottom: 1px solid rgba(255, 255, 255, 25);
     padding: 8px 12px;
-    font-size: 12px;
+    font-size: $table_headerpx;
     font-weight: 500;
 }
 
@@ -135,9 +153,9 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 
 
 QDialog, QMessageBox { background: #18181C; }
-QMessageBox QLabel { color: #E0E0E0; font-size: 15px; min-width: 280px; }
+QMessageBox QLabel { color: #E0E0E0; font-size: $dialogpx; min-width: 280px; }
 QMessageBox QPushButton { min-width: 80px; }
-"""
+""").substitute({f"{k}px": f"{v}px" for k, v in FONT.items()})
 
 MESSAGE_COLORS = {
     "error": "#EF4444",
@@ -518,7 +536,7 @@ class LoginPage(QWidget):
     # ---- helpers ----
     def set_message(self, text, kind="error"):
         color = MESSAGE_COLORS.get(kind, MESSAGE_COLORS["error"])
-        self.message.setStyleSheet(f"color: {color}; font-size: 14px;")
+        self.message.setStyleSheet(f"color: {color}; font-size: {FONT['message']}px;")
         self.message.setText(text)
 
     def _set_step(self, awaiting_code):

@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
 from qasync import asyncSlot
 
 from common import (
+    FONT,
     MESSAGE_COLORS,
     BaseWindow,
     CameraPage,
@@ -139,19 +140,19 @@ class DashboardPage(QWidget):
     enroll_requested = pyqtSignal(int)
     AVATAR_SIZE = 36
     NAV_AVATAR_SIZE = 48
-    ACTIONS_WIDTH = 190
+    ACTIONS_WIDTH = 210
     COLUMN_PADDING = 24
-    HEADER_STYLE = """
-        QHeaderView::section {
+    HEADER_STYLE = f"""
+        QHeaderView::section {{
             background: #18181C;
             color: #6B6B73;
             border: none;
             border-right: 1px solid rgba(255, 255, 255, 25);
             border-bottom: 1px solid rgba(255, 255, 255, 25);
             padding: 8px 12px;
-            font-size: 12px;
+            font-size: {FONT['table_header']}px;
             font-weight: 500;
-        }
+        }}
     """
 
     def __init__(self, window):
@@ -186,7 +187,7 @@ class DashboardPage(QWidget):
         self.table.verticalHeader().hide()
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.verticalHeader().setDefaultSectionSize(56)
+        self.table.verticalHeader().setDefaultSectionSize(64)
         self.table.setShowGrid(False)
 
         header = self.table.horizontalHeader()
@@ -278,7 +279,9 @@ class DashboardPage(QWidget):
 
         enroll_btn = QPushButton("Re-enroll Face" if has_face else "Enroll Face")
         enroll_btn.setCursor(Qt.PointingHandCursor)
-        enroll_btn.setStyleSheet("font-size: 14px; padding: 6px 12px;")
+        enroll_btn.setStyleSheet(
+            f"font-size: {FONT['small_button']}px; padding: 6px 12px;"
+        )
         enroll_btn.clicked.connect(
             lambda _, uid=user["id"]: self.on_enroll_clicked(uid)
         )
@@ -360,7 +363,7 @@ class EnrollFaceEmbeddingPage(CameraPage):
             self._status_kind = kind
             if kind == "error":
                 self.status_label.setStyleSheet(
-                    f"color: {MESSAGE_COLORS['error']}; font-size: 15px;"
+                    f"color: {MESSAGE_COLORS['error']}; font-size: {FONT['muted']}px;"
                 )
             else:
                 self.status_label.setStyleSheet("")
