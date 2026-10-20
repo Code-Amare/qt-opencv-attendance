@@ -196,7 +196,7 @@ CSRF_FAILURE_VIEW = "core.csrf_failure.csrf_failure"
 
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=15),  ### This will be changed
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),  ### This will be changed
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -223,11 +223,18 @@ CSRF_TRUSTED_ORIGINS = [
     if origin.strip()
 ]
 
-CORS_ALLOW_CREDENTIALS = True
-
 print("CORS_ALLOWED_ORIGIN:", CORS_ALLOWED_ORIGINS)
 print("CSRF_TRUSTED_ORIGINS:", CSRF_TRUSTED_ORIGINS)
 print("ALLOWED_HOSTS:", ALLOWED_HOSTS)
 
 
 CONTACT_RECEIVER_EMAIL = "amaremisganacode@gmail.com"
+
+
+CORS_ALLOW_CREDENTIALS = True
+
+if not DEBUG:
+    SESSION_COOKIE_SAMESITE = "None"
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SECURE = True

@@ -22,58 +22,95 @@ from utils.emails import (
     send_login_link_email,
     send_contact_admin_email,
 )
+from django.conf import settings
+
+DEBUG = settings.DEBUG
+
 import logging
 
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
+if DEBUG:
 
-def send_cookies(request, user):
-    refresh_token = RefreshToken.for_user(user)
+    def send_cookies(request, user):
+        refresh_token = RefreshToken.for_user(user)
 
-    access_token = refresh_token.access_token
-    csrf_token = get_token(request)
+        access_token = refresh_token.access_token
+        csrf_token = get_token(request)
 
-    response = Response(
-        {
-            "user": UserSerializer(user).data,
-            "tokens": {
-                "access": str(access_token),
-                "refresh": str(refresh_token),
-                "csrf": csrf_token,
+        response = Response(
+            {
+                "user": UserSerializer(user).data,
+                "tokens": {
+                    "access": str(access_token),
+                    "refresh": str(refresh_token),
+                    "csrf": csrf_token,
+                },
             },
-        },
-        status=status.HTTP_200_OK,
-    )
+            status=status.HTTP_200_OK,
+        )
 
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=True,
-        samesite="Lax",
-        max_age=60 * 15,
-    )
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            max_age=60 * 15,
+        )
 
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="Lax",
-        max_age=60 * 60 * 24 * 7,
-    )
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            max_age=60 * 60 * 24 * 7,
+        )
 
-    response.set_cookie(
-        "csrftoken",
-        csrf_token,
-        httponly=False,
-        secure=True,
-        samesite="Lax",
-    )
+        response.set_cookie(
+            "csrftoken",
+            csrf_token,
+            httponly=False,
+            secure=True,
+            samesite="Lax",
+        )
 
-    return response
+        return response
+
+else:
+
+    def send_cookies(request, user):
+        refresh_token = RefreshToken.for_user(user)
+        access_token = refresh_token.access_token
+        csrf_token = get_token(request)
+
+        response = Response(
+            {"user": UserSerializer(user).data, "csrf": csrf_token},
+            status=status.HTTP_200_OK,
+        )
+
+        cookie_opts = {"secure": True, "samesite": "None"}
+
+        response.set_cookie(
+            "access_token",
+            str(access_token),
+            httponly=True,
+            max_age=60 * 15,
+            **cookie_opts,
+        )
+        response.set_cookie(
+            "refresh_token",
+            str(refresh_token),
+            httponly=True,
+            max_age=60 * 60 * 24 * 7,
+            **cookie_opts,
+        )
+        response.set_cookie("csrftoken", csrf_token, httponly=False, **cookie_opts)
+
+        return response
 
 
 class MeView(APIView):
