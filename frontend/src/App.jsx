@@ -14,6 +14,8 @@ import Sessions from "./pages/admin/Sessions.jsx";
 import SessionDetail from "./pages/admin/SessionDetail.jsx";
 import LoginViaLink from "./pages/public/LoginViaLink.jsx";
 import UserDetail from "./pages/admin/UserDetail.jsx";
+import Releases from "./pages/admin/Releases.jsx";
+import ReleaseEdit from "./pages/admin/ReleaseEdit.jsx";
 
 const App = () => {
   return (
@@ -36,6 +38,10 @@ const App = () => {
 
           <Route path="/admin/sessions" element={<Sessions />} />
           <Route path="/admin/sessions/:id" element={<SessionDetail />} />
+
+          <Route path="/admin/releases" element={<Releases />} />
+          <Route path="/admin/releases/new" element={<ReleaseEdit />} />
+          <Route path="/admin/releases/:id" element={<ReleaseEdit />} />
 
           {/* pages still to build
           <Route path="/admin/releases" element={<Releases />} />
