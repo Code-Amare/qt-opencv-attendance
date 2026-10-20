@@ -88,7 +88,14 @@ else:
         csrf_token = get_token(request)
 
         response = Response(
-            {"user": UserSerializer(user).data, "csrf": csrf_token},
+            {
+                "user": UserSerializer(user).data,
+                "tokens": {
+                    "access": str(access_token),
+                    "refresh": str(refresh_token),
+                    "csrf": csrf_token,
+                },
+            },
             status=status.HTTP_200_OK,
         )
 
