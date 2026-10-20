@@ -26,7 +26,13 @@ const Login = () => {
     updatePageTitle("Sign in");
   }, []);
 
-  if (user.isAuthenticated) return <Navigate to="/admin" replace />;
+  if (user.isAuthenticated && user.isStaff) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  if (user.isAuthenticated) {
+    return <Navigate to="dashboard" replace />;
+  }
 
   const onChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -58,12 +64,11 @@ const Login = () => {
         );
       }
 
+      login(data.user);
       if (data.user.is_staff) {
-        login(data.user);
-
-        navigate("/admin");
+        navigate("/admin/dashboard");
       } else {
-        setError("This page is only for admin users");
+        navigate("/dashboard");
       }
     } catch (err) {
       setError(getErrorMessage(err, "Unable to sign in. Please try again."));

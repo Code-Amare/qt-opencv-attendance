@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import Alert from "../../components/Alert";
 import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
@@ -45,6 +45,8 @@ export default function SessionDetail() {
   const [changingState, setChangingState] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [downloading, setDownloading] = useState(false);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     updatePageTitle("Session");
@@ -179,12 +181,12 @@ export default function SessionDetail() {
   return (
     <div className="space-y-6 p-6">
       <div>
-        <Link
-          to="/admin/sessions"
-          className="text-sm text-foreground-muted hover:text-foreground"
+        <p
+          className="text-sm text-foreground-muted hover:text-foreground cursor-pointer"
+          onClick={() => navigate(-1)}
         >
-          ← Back to sessions
-        </Link>
+          ← Go back
+        </p>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">

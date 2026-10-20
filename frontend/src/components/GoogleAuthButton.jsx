@@ -30,14 +30,12 @@ const GoogleAuthButton = ({ nextPage = "/admin" }) => {
           id: toastId,
         });
 
-        if (user.role == "admin") {
-          if (nextPage == "carts") {
-            toast.error("You logged in as Admin. Admin can't use Cart");
-          }
-          return navigate("/admin/dashboard");
+        isAdmin = user.isStaff;
+        if (isAdmin) {
+          navigate("admin/dashboard", { replace: true });
+        } else {
+          navigate("dashboard", { replace: true });
         }
-
-        navigate(nextPage, { replace: true });
       } catch (error) {
         console.error("Google auth failed:", error);
 

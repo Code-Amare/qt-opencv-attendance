@@ -19,6 +19,12 @@ const LoginViaLink = () => {
     updatePageTitle("Sign in");
   }, []);
 
+  const navigateAfterLogin = () => {
+    if (user.isStaff) {
+      navigate("/admin/dashboard", { replace: true });
+    }
+    navigate("/dashboard", { replace: true });
+  };
   const confirmLogin = async () => {
     if (status === "loading") return;
     setStatus("loading");
@@ -82,7 +88,7 @@ const LoginViaLink = () => {
               </div>
               <button
                 type="button"
-                onClick={() => navigate("/admin", { replace: true })}
+                onClick={navigateAfterLogin}
                 className={primaryBtn}
               >
                 Go to dashboard

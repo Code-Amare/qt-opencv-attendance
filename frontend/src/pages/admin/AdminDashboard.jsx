@@ -5,7 +5,8 @@ import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
 import { useAuth } from "../../context/AuthContext";
-import { usePageTitle } from "../../context/PageTitleContext";
+import { useUpdatePageTitle } from "../../context/PageTitleContext";
+import { updateTitle } from "../../context/DashboardTitleContext";
 
 const sessionStyle = {
   active: "text-success",
@@ -67,7 +68,6 @@ function Donut({ counts, total }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { updatePageTitle } = usePageTitle();
   const { logout: authLogout } = useAuth();
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
@@ -75,9 +75,8 @@ export default function Dashboard() {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  useEffect(() => {
-    updatePageTitle("Dashboard");
-  }, []);
+  updateTitle("Dashboard");
+  useUpdatePageTitle("Admin Dashboard");
 
   useEffect(() => {
     const load = async () => {
@@ -132,31 +131,6 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <div className="flex gap-3">
-          <Link
-            to="/admin/users"
-            className="rounded-sm border border-white/10 px-4 py-2 text-sm hover:bg-background-elevated"
-          >
-            Manage users
-          </Link>
-          <Link
-            to="/admin/sessions"
-            className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-          >
-            Sessions
-          </Link>
-          <button
-            type="button"
-            onClick={() => setConfirmLogout(true)}
-            className="cursor-pointer rounded-sm border border-white/10 px-4 py-2 text-sm text-danger hover:bg-background-elevated"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-
       {/* Stat cards */}
       <section className="grid border-l border-t border-white/10 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map(([label, value]) => (

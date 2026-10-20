@@ -102,7 +102,7 @@ export default function UserDetail() {
           to="/admin/users"
           className="text-sm text-foreground-muted hover:text-foreground"
         >
-          ← Back to users
+          ← Go back
         </Link>
         <div className="mt-2 flex items-center justify-between">
           <h1 className="text-2xl font-semibold tracking-tight">

@@ -276,12 +276,6 @@ export default function Sessions() {
   return (
     <div className="space-y-6 p-6">
       <div>
-        <Link
-          to="/admin"
-          className="text-sm text-foreground-muted hover:text-foreground"
-        >
-          ← Dashboard
-        </Link>
         <div className="mt-2 flex items-center justify-between">
           <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
           <button

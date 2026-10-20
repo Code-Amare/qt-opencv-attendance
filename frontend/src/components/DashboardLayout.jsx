@@ -17,6 +17,8 @@ import dashboardNavigation, {
   PATHS,
   getPageTitle,
 } from "../config/dashboardNavigation";
+import { DashboardTitleProvider } from "../context/DashboardTitleContext";
+import { useDashboardTitle } from "../context/DashboardTitleContext";
 
 const STORAGE_KEY = "dashboard-sidebar-collapsed";
 
@@ -197,6 +199,7 @@ function UserMenu() {
 /* ------------------------------------------------------------ top bar */
 function DashboardNav({ setSidebarOpen }) {
   const { pathname } = useLocation();
+  const { title } = useDashboardTitle();
 
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4">
@@ -210,7 +213,7 @@ function DashboardNav({ setSidebarOpen }) {
         </button>
 
         <div className="truncate text-lg font-semibold text-foreground cursor-default">
-          {getPageTitle(pathname)}
+          {title ?? getPageTitle(pathname)}
         </div>
       </div>
 
@@ -545,16 +548,18 @@ export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="h-screen flex overflow-hidden bg-background">
-      <DashboardSidebar open={sidebarOpen} setOpen={setSidebarOpen} />
+    <DashboardTitleProvider>
+      <div className="h-screen flex overflow-hidden bg-background">
+        <DashboardSidebar open={sidebarOpen} setOpen={setSidebarOpen} />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <DashboardNav setSidebarOpen={setSidebarOpen} />
+        <div className="flex-1 flex flex-col min-w-0">
+          <DashboardNav setSidebarOpen={setSidebarOpen} />
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          <Outlet />
-        </main>
+          <main className="flex-1 overflow-y-auto p-4 md:p-6">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </DashboardTitleProvider>
   );
 }
