@@ -299,7 +299,7 @@ class GUILoginView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        if user.email_verified:
+        if not user.email_verified:
             return Response(
                 {
                     "error": "Email not verified yet.",
