@@ -4,7 +4,8 @@ import Alert from "../../components/Alert";
 import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
-import { usePageTitle } from "../../context/PageTitleContext";
+import { useUpdatePageTitle } from "../../context/PageTitleContext";
+import { updateTitle } from "../../context/DashboardTitleContext";
 
 const statusStyle = {
   present: "text-success",
@@ -15,7 +16,6 @@ const statusStyle = {
 export default function UserDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { updatePageTitle } = usePageTitle();
 
   const [user, setUser] = useState(null);
   const [info, setInfo] = useState({
@@ -28,9 +28,9 @@ export default function UserDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    updatePageTitle("User details");
-  }, []);
+  useUpdatePageTitle("User detail");
+  const title = user?.username ? `User: ${user.username}` : null;
+  updateTitle(title);
 
   useEffect(() => {
     const load = async () => {

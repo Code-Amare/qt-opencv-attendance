@@ -4,7 +4,8 @@ import Alert from "../../components/Alert";
 import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
-import { usePageTitle } from "../../context/PageTitleContext";
+import { useUpdatePageTitle } from "../../context/PageTitleContext";
+import { updateTitle } from "../../context/DashboardTitleContext";
 
 const inputClass =
   "rounded-sm border border-white/10 bg-background-elevated px-3 py-2 text-sm " +
@@ -33,7 +34,6 @@ const filters = [
 
 export default function SessionDetail() {
   const { id } = useParams();
-  const { updatePageTitle } = usePageTitle();
 
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -48,9 +48,8 @@ export default function SessionDetail() {
 
   const navigate = useNavigate();
 
-  useEffect(() => {
-    updatePageTitle("Session");
-  }, []);
+  updateTitle("Session Detail");
+  useUpdatePageTitle("Session Detail");
 
   const load = async () => {
     try {

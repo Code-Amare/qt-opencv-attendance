@@ -4,7 +4,8 @@ import Alert from "../../components/Alert";
 import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
-import { usePageTitle } from "../../context/PageTitleContext";
+import { useUpdatePageTitle } from "../../context/PageTitleContext";
+import { updateTitle } from "../../context/DashboardTitleContext";
 
 const fieldClass =
   "w-full rounded-sm border border-white/10 bg-background-elevated px-3 py-2.5 text-sm " +
@@ -15,10 +16,10 @@ const labelClass = "mb-1.5 block text-sm text-foreground-muted";
 export default function UserEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { updatePageTitle } = usePageTitle();
   const fileInputRef = useRef(null);
 
   const [form, setForm] = useState(null);
+  const [username, setUsername] = useState(null);
   const [currentPicture, setCurrentPicture] = useState(null);
   const [profilePicture, setProfilePicture] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -29,9 +30,9 @@ export default function UserEdit() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    updatePageTitle("Edit user");
-  }, []);
+  useUpdatePageTitle("User Edit");
+  const title = username ? `User: ${username}` : null;
+  updateTitle(title);
 
   // preview of a newly selected image
   useEffect(() => {
@@ -46,6 +47,7 @@ export default function UserEdit() {
       try {
         const res = await api.get(`/admin/users/${id}/`);
         const u = res.data.user;
+        setUsername(u.username);
         setForm({
           first_name: u.first_name ?? "",
           last_name: u.last_name ?? "",
