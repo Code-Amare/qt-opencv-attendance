@@ -30,7 +30,7 @@ const GoogleAuthButton = ({ nextPage = "/admin" }) => {
           id: toastId,
         });
 
-        isAdmin = user.isStaff;
+        let isAdmin = user.isStaff;
         if (isAdmin) {
           navigate("admin/dashboard", { replace: true });
         } else {
