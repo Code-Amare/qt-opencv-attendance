@@ -20,8 +20,11 @@ from PyQt5.QtGui import (
 from PyQt5.QtWidgets import (
     QApplication,
     QGraphicsBlurEffect,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QPushButton,
     QSizePolicy,
@@ -106,6 +109,18 @@ QPushButton#secondary {
     border: 1px solid rgba(255, 255, 255, 25);
 }
 QPushButton#secondary:hover { background: #1F1F23; }
+
+QListWidget {
+    background: #18181C;
+    color: #E0E0E0;
+    border: 1px solid rgba(255, 255, 255, 25);
+    border-radius: 2px;
+    font-size: $bodypx;
+    outline: 0;
+}
+QListWidget::item { padding: 10px 12px; }
+QListWidget::item:hover { background: #1F1F23; }
+QListWidget::item:selected { background: #2B2B36; color: #E0E0E0; }
 
 QRadioButton, QCheckBox { color: #E0E0E0; font-size: $bodypx; spacing: 10px; }
 QRadioButton:disabled, QCheckBox:disabled { color: #6B6B73; }
@@ -244,10 +259,31 @@ def draw_box(display, bbox, text="", color=(0, 255, 0)):
         )
 
 
+def _video_capture(index):
+    """Same backend everywhere so scanned indices match the ones we open.
+    DirectShow on Windows is much faster than MSMF."""
+    if sys.platform == "win32":
+        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    return cv2.VideoCapture(index)
+
+
 async def open_capture(index):
     """Open the camera in a worker thread so the UI (and spinner) stays responsive."""
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, cv2.VideoCapture, index)
+    return await loop.run_in_executor(None, _video_capture, index)
+
+
+def probe_cameras(max_index=6):
+    """Indices that open AND deliver a frame. Blocking: run in a worker thread."""
+    found = []
+    for i in range(max_index):
+        cap = _video_capture(i)
+        if cap.isOpened():
+            ok, _ = cap.read()
+            if ok:
+                found.append(i)
+        cap.release()
+    return found
 
 
 # ------------------------------------------------------------- widgets
@@ -266,6 +302,10 @@ class VideoLabel(QLabel):
     def show_frame(self, frame):
         """Show an OpenCV (BGR) frame."""
         self.set_frame(frame_to_pixmap(frame))
+
+    def clear_frame(self):
+        self._pixmap = None
+        self.clear()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -331,6 +371,131 @@ class CameraPage(QWidget):
 
     def cam_feed(self):
         raise NotImplementedError
+
+
+class CameraSelectPage(CameraPage):
+    """Shown right after login: detect cameras, preview one, pick it.
+    Sets window.CAMERA_INDEX and emits `confirmed` on Continue."""
+
+    confirmed = pyqtSignal()
+
+    def __init__(self, window):
+        super().__init__(window)
+        self._token = 0  # ignores stale previews when the user clicks fast
+
+        title = QLabel("Select camera")
+        title.setObjectName("h1")
+        subtitle = QLabel("Choose the camera to use for face recognition.")
+        subtitle.setObjectName("muted")
+
+        self.list = QListWidget()
+        self.list.setFixedWidth(220)
+        self.list.currentRowChanged.connect(self.on_select)
+
+        self.scan_btn = QPushButton("Rescan")
+        self.scan_btn.setObjectName("secondary")
+        self.scan_btn.setCursor(Qt.PointingHandCursor)
+        self.scan_btn.clicked.connect(self.scan)
+
+        self.camera_label.setMinimumSize(480, 360)
+        self.status = QLabel("")
+        self.status.setObjectName("muted")
+
+        self.continue_btn = QPushButton("Continue")
+        self.continue_btn.setCursor(Qt.PointingHandCursor)
+        self.continue_btn.setEnabled(False)
+        self.continue_btn.clicked.connect(self.on_continue)
+
+        left = QVBoxLayout()
+        left.addWidget(self.list, 1)
+        left.addWidget(self.scan_btn)
+
+        right = QVBoxLayout()
+        right.addWidget(self.camera_label, 1)
+        right.addWidget(self.status)
+        right.addWidget(self.continue_btn)
+
+        body = QHBoxLayout()
+        body.setSpacing(20)
+        body.addLayout(left)
+        body.addLayout(right, 1)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(40, 30, 40, 30)
+        root.setSpacing(6)
+        root.addWidget(title)
+        root.addWidget(subtitle)
+        root.addSpacing(16)
+        root.addLayout(body, 1)
+
+    # ---- entry point (called by the window after login) ----
+    def begin(self):
+        self.scan()
+
+    # ---- scanning ----
+    @asyncSlot()
+    async def scan(self):
+        self._stop_preview()
+        self.list.clear()
+        self.camera_label.clear_frame()
+        self.continue_btn.setEnabled(False)
+        self.scan_btn.setEnabled(False)
+        self.status.setText("Scanning for cameras...")
+
+        loop = asyncio.get_running_loop()
+        found = await loop.run_in_executor(None, probe_cameras)
+
+        for i in found:
+            item = QListWidgetItem(f"Camera {i}")
+            item.setData(Qt.UserRole, i)
+            self.list.addItem(item)
+
+        self.scan_btn.setEnabled(True)
+        if not found:
+            self.status.setText("No cameras found. Plug one in and press Rescan.")
+            return
+        self.status.setText(f"Found {len(found)} camera(s).")
+        current = self.window_.CAMERA_INDEX
+        self.list.setCurrentRow(found.index(current) if current in found else 0)
+
+    # ---- preview ----
+    @asyncSlot(int)
+    async def on_select(self, row):
+        self._stop_preview()
+        self.continue_btn.setEnabled(False)
+        if row < 0:
+            return
+        index = self.list.item(row).data(Qt.UserRole)
+        token = self._token
+
+        cap = await open_capture(index)
+        if token != self._token or not cap.isOpened():  # user moved on / failed
+            cap.release()
+            if token == self._token:
+                self.status.setText(f"Unable to open camera {index}.")
+            return
+        self.cap = cap
+        self.status.setText(f"Camera {index}")
+        self.continue_btn.setEnabled(True)
+        self.timer.start(30)
+
+    def cam_feed(self):
+        frame = self.read_frame()
+        if frame is not None:
+            self.update_frame(frame)
+
+    def _stop_preview(self):
+        self._token += 1
+        self.stop_camera()
+
+    # ---- continue ----
+    def on_continue(self):
+        item = self.list.currentItem()
+        if item is None:
+            return
+        self.window_.CAMERA_INDEX = item.data(Qt.UserRole)
+        self._stop_preview()
+        self.confirmed.emit()
 
 
 # ---------------------------------------------------------------- auth
@@ -612,12 +777,14 @@ class LoginPage(QWidget):
 class BaseWindow(QMainWindow):
     """Frameless window with title bar, page stack, loader overlay, auth,
     HTTP session and the face model. Apps subclass it and implement
-    build_pages() and on_login_successful()."""
+    build_pages() and on_login_successful().
+
+    Flow: login -> camera select page -> on_login_successful()."""
 
     PRODUCT_NAME = "FaceCall"
     BASE_URL = "https://localhost:8000/api/"
     SIMILARITY_THRESHOLD = 0.50
-    CAMERA_INDEX = 0
+    CAMERA_INDEX = 1  # default; overwritten by the camera select page
     STREAK_THRESHOLD = 20
     ENABLE_ANTI_SPOOFING = True
     REQUIRE_STAFF = True
@@ -685,7 +852,15 @@ class BaseWindow(QMainWindow):
         )
 
         self.login_page = self.add_page(LoginPage(self))
-        self.login_page.login_successful.connect(self.on_login_successful)
+        self.camera_select_page = self.add_page(CameraSelectPage(self))
+
+        # login -> camera select -> app's own on_login_successful()
+        self.login_page.login_successful.connect(self.show_camera_select)
+        self.camera_select_page.confirmed.connect(self.on_login_successful)
+
+    def show_camera_select(self):
+        self.show_page(self.camera_select_page)
+        self.camera_select_page.begin()
 
     def add_page(self, page):
         self.stack.addWidget(page)
