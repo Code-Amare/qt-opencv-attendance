@@ -11,6 +11,7 @@ django-cloudinary-storage==0.3.0
 django-cors-headers==4.9.0
 djangorestframework==3.18.3
 djangorestframework_simplejwt==5.5.1
+gunicorn==26.2.0
 h11==0.16.0
 idna==3.20
 numpy==2.5.4
