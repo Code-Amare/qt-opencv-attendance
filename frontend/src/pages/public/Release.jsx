@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { FaWindows, FaApple, FaLinux } from "react-icons/fa";
+import {
+  FaWindows,
+  FaApple,
+  FaLinux,
+  FaMicrochip,
+  FaCheckCircle,
+} from "react-icons/fa";
 import Alert from "../../components/Alert";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
@@ -23,6 +29,29 @@ const OS_LIST = [
     aliases: ["mac", "macos", "darwin", "osx"],
   },
   { key: "linux", label: "Linux", Icon: FaLinux, aliases: ["linux"] },
+];
+
+// Edit these to match what your build really needs
+const GPU_REQUIREMENTS = [
+  ["Graphics card", "An NVIDIA GPU with CUDA support."],
+  ["Driver", "A recent NVIDIA driver installed from nvidia.com."],
+  [
+    "CUDA and cuDNN",
+    "CUDA runtime and cuDNN libraries compatible with the app's build.",
+  ],
+  [
+    "Operating system",
+    "Windows or Linux. macOS has no NVIDIA support, so Macs always use the CPU.",
+  ],
+];
+
+const FALLBACK_STEPS = [
+  ["Detect", "On launch, FaceCall checks for a compatible NVIDIA GPU."],
+  ["Choose", "If one is found, face detection and recognition run on it."],
+  [
+    "Fall back",
+    "If not, everything runs on the CPU automatically. No setup, no error.",
+  ],
 ];
 
 const normalizePlatform = (value = "") => {
@@ -56,6 +85,82 @@ const formatSize = (bytes) => {
   }
   return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 };
+
+function GpuSection() {
+  return (
+    <section className="mt-16">
+      <div className="flex items-center gap-3">
+        <FaMicrochip
+          aria-hidden="true"
+          className="h-6 w-6 text-foreground-muted"
+        />
+        <h2 className="text-2xl font-semibold tracking-tight">
+          Faster with an NVIDIA GPU
+        </h2>
+      </div>
+      <p className="mt-3 max-w-2xl text-foreground-muted">
+        Face detection and recognition run on your NVIDIA graphics card when one
+        is available, which keeps live recognition smooth. No GPU? FaceCall
+        still works on any computer.
+      </p>
+
+      <div className="mt-10 grid gap-10 lg:grid-cols-2">
+        {/* Requirements */}
+        <div>
+          <h3 className="text-sm font-medium uppercase tracking-widest text-foreground-subtle">
+            GPU requirements
+          </h3>
+          <dl className="mt-4 border-t border-white/10">
+            {GPU_REQUIREMENTS.map(([term, text]) => (
+              <div
+                key={term}
+                className="grid gap-1 border-b border-white/10 py-3 sm:grid-cols-3 sm:gap-4"
+              >
+                <dt className="text-sm font-medium">{term}</dt>
+                <dd className="text-sm text-foreground-muted sm:col-span-2">
+                  {text}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-3 text-xs text-foreground-subtle">
+            None of this is needed to run the app. It only unlocks GPU speed.
+          </p>
+        </div>
+
+        {/* Fallback */}
+        <div>
+          <h3 className="text-sm font-medium uppercase tracking-widest text-foreground-subtle">
+            Automatic CPU fallback
+          </h3>
+          <ol className="mt-4 border-t border-white/10">
+            {FALLBACK_STEPS.map(([title, text], i) => (
+              <li
+                key={title}
+                className="flex gap-4 border-b border-white/10 py-3"
+              >
+                <span className="w-6 shrink-0 pt-0.5 text-sm tabular-nums text-foreground-subtle">
+                  0{i + 1}
+                </span>
+                <div>
+                  <p className="text-sm font-medium">{title}</p>
+                  <p className="mt-1 text-sm text-foreground-muted">{text}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-3 flex items-center gap-2 text-sm text-foreground-muted">
+            <FaCheckCircle
+              aria-hidden="true"
+              className="h-4 w-4 text-success"
+            />
+            Same accuracy on both. Only the speed differs.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function Release() {
   const { updatePageTitle } = usePageTitle();
@@ -224,6 +329,9 @@ export default function Release() {
             );
           })}
         </div>
+
+        {/* GPU support */}
+        <GpuSection />
 
         {/* Release notes */}
         {release?.release_notes && (

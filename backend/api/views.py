@@ -7,12 +7,20 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics
 from .models import DesktopRelease, DesktopReleaseAsset, SiteSettings
+from attendance.models import AttendanceSession, Attendance
+from attendance.serializers import AttendanceSerializer, AttendanceSessionSerializer
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.contrib.auth import get_user_model
+from django.db.models import Count, Q
 from .serializers import (
     DesktopReleaseAssetSerializer,
     DesktopReleaseSerializer,
     PublicReleaseSerializer,
     SiteSettingsSerializer,
 )
+
+User = get_user_model()
 
 
 class TestView(APIView):
@@ -135,3 +143,34 @@ class LatestDownloadView(APIView):
         if asset is None:
             return Response({"error": "No download for that platform."}, status=404)
         return HttpResponseRedirect(asset.download_url)
+
+
+class HomeStatsView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []  # a stale JWT must not cause a 401 here
+
+    def get(self, request):
+        data = cache.get("home_stats")
+        if data is None:
+            data = self.build()
+            cache.set("home_stats", data, 60)
+        return Response(data)
+
+    def build(self):
+        A = Attendance.Status
+
+        counts = Attendance.objects.aggregate(
+            present=Count("id", filter=Q(status=A.PRESENT)),
+            late=Count("id", filter=Q(status=A.LATE)),
+            absent=Count("id", filter=Q(status=A.ABSENT)),
+        )
+
+        return {
+            "sessions": AttendanceSession.objects.exclude(
+                status=AttendanceSession.Status.CANCELLED
+            ).count(),
+            "enrolled": User.objects.filter(is_staff=False)
+            .exclude(face_embeddings__isnull=True)
+            .count(),
+            **counts,
+        }
