@@ -7,6 +7,7 @@ from django.contrib.auth.models import (
 )
 import secrets
 import numpy as np
+from tenant.models import Tenant
 
 
 class User(AbstractUser):
@@ -39,6 +40,24 @@ class User(AbstractUser):
 
     face_embeddings = models.BinaryField(blank=True, null=True, editable=False)
     embeddings_updated_at = models.DateTimeField(blank=True, null=True)
+
+    tenant = models.ForeignKey(
+        Tenant,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="users",
+    )
+    is_tenant_admin = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(is_tenant_admin=False)
+                | models.Q(tenant__isnull=False),
+                name="tenant_admin_has_tenant",
+            )
+        ]
 
     @property
     def has_face(self):

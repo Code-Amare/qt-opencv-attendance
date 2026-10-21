@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
+from tenant.models import Tenant
 
 User = get_user_model()
 
@@ -31,6 +32,16 @@ class AttendanceSession(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="attendance_sessions",
+    )
+
+    class Meta:
+        ordering = ["-started_at"]
+        indexes = [models.Index(fields=["tenant", "-started_at"])]
 
     @property
     def is_ended(self):
@@ -93,3 +104,8 @@ class Attendance(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.session}"
+
+    def save(self, *args, **kwargs):
+        if self.user.tenant != self.session.tenant:
+            raise ValueError("The user and the session belong to different tenants.")
+        super().save(*args, **kwargs)

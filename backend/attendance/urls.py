@@ -1,14 +1,19 @@
 from django.urls import path
+
 from .views import (
-    EvaluateAttendanceView,
-    CreateSessionView,
     AttendanceListView,
+    EvaluateAttendanceView,
+    SessionDetailView,
+    SessionListCreateView,
+    SessionStatusView,
     UserAttendanceDetailView,
 )
 
 urlpatterns = [
-    path("", EvaluateAttendanceView.as_view()),
-    path("session/create/", CreateSessionView.as_view()),
-    path("session/<int:session_id>/", AttendanceListView.as_view()),
-    path("<int:user_id>/", UserAttendanceDetailView.as_view()),
+    path("sessions/", SessionListCreateView.as_view()),
+    path("sessions/<int:session_id>/", SessionDetailView.as_view()),
+    path("sessions/<int:session_id>/status/", SessionStatusView.as_view()),
+    path("sessions/<int:session_id>/attendance/", AttendanceListView.as_view()),
+    path("evaluate/", EvaluateAttendanceView.as_view()),
+    path("users/<int:user_id>/", UserAttendanceDetailView.as_view()),
 ]

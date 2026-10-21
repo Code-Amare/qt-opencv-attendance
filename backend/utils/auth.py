@@ -1,6 +1,7 @@
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework.permissions import BasePermission
 
 
 class JWTCookieAuthentication(JWTAuthentication):
@@ -22,8 +23,19 @@ class JWTCookieAuthentication(JWTAuthentication):
 
         except (InvalidToken, TokenError):
 
-            raise AuthenticationFailed(
-                "Invalid or expired token."
-            )
+            raise AuthenticationFailed("Invalid or expired token.")
 
+
+class IsTenantAdmin(BasePermission):
+    message = "Tenant admin access required."
+
+    def has_permission(self, request, view):
+        u = request.user
+        return bool(
+            u
+            and u.is_authenticated
+            and u.is_tenant_admin
+            and u.tenant_id
+            and u.tenant.is_active
+        )
 

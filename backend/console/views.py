@@ -1,550 +1,365 @@
-import io
+import logging
+
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
-from rest_framework.views import APIView
-from rest_framework.response import Response
+from django.utils.text import slugify
 from rest_framework import status
 from rest_framework.permissions import IsAdminUser
-from django.contrib.auth import get_user_model
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from xml.sax.saxutils import escape
-from attendance.models import Attendance, AttendanceSession
-from attendance.serializers import AttendanceSerializer, AttendanceSessionSerializer
-from users.serializers import UserSerializer, AdminUserUpdateSerializer
-from django.db import transaction
-from django.http import HttpResponse
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from cloudinary.exceptions import Error as CloudinaryError
+from rest_framework import generics
+from .models import DesktopRelease, DesktopReleaseAsset
+from attendance.models import AttendanceSession, Attendance
+from users.models import Tenant
+from users.models import ForgotPasswordRequest
+from utils.emails import send_forgot_password_email
 
-MAX_PICTURE_SIZE = 5 * 1024 * 1024
+from .serializers import TenantSerializer, with_counts, DesktopReleaseAssetSerializer, DesktopReleaseSerializer
 
-
-def first_error(errors):
-    field, messages = next(iter(errors.items()))
-    message = messages[0] if isinstance(messages, (list, tuple)) else messages
-    return f"{field}: {message}"
-
-
-def invalid_picture(file):
-    if not (file.content_type or "").startswith("image/"):
-        return "profile_picture: the file must be an image"
-    if file.size > MAX_PICTURE_SIZE:
-        return "profile_picture: the image must be 5 MB or smaller"
-    return None
-
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
-USER_EDITABLE_FIELDS = [
-    "first_name",
-    "last_name",
-    "email",
-    "section",
-    "phone_number",
-    "date_of_birth",
-    "is_active",
-]
 
-STATUS_COLORS = {
-    "present": colors.HexColor("#047857"),
-    "late": colors.HexColor("#B45309"),
-    "absent": colors.HexColor("#B91C1C"),
-    "not set": colors.HexColor("#6B7280"),
-}
+# ---------------------------------------------------------------- helpers
 
 
-def fmt_dt(value):
-    return timezone.localtime(value).strftime("%Y-%m-%d %H:%M") if value else "-"
+def error(message, code=status.HTTP_400_BAD_REQUEST):
+    return Response({"error": message}, status=code)
 
 
-class AdminSessionReportView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def get(self, request, session_id):
-        session = AttendanceSession.objects.filter(id=session_id).first()
-        if not session:
-            return Response(
-                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        records = {r.user_id: r for r in Attendance.objects.filter(session=session)}
-        users = User.objects.filter(is_staff=False, is_active=True).order_by(
-            "first_name", "last_name", "id"
-        )
-
-        counts = {"present": 0, "late": 0, "absent": 0, "not set": 0}
-        rows = [["#", "Name", "Email", "Status", "Recorded at"]]
-        row_colors = []
-
-        for i, user in enumerate(users, start=1):
-            record = records.get(user.id)
-            state = record.status if record else "not set"
-            counts[state] += 1
-            name = f"{user.first_name} {user.last_name}".strip() or "-"
-            rows.append(
-                [
-                    str(i),
-                    name,
-                    user.email or "-",
-                    state.title(),
-                    fmt_dt(record.recorded_at) if record else "-",
-                ]
-            )
-            row_colors.append(("TEXTCOLOR", (3, i), (3, i), STATUS_COLORS[state]))
-
-        # ---- build the PDF ----
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=A4,
-            leftMargin=15 * mm,
-            rightMargin=15 * mm,
-            topMargin=15 * mm,
-            bottomMargin=15 * mm,
-            title=f"{session.name} - Attendance report",
-        )
-        styles = getSampleStyleSheet()
-        story = [
-            Paragraph(escape(session.name), styles["Title"]),
-            Paragraph("Attendance report", styles["Heading3"]),
-            Spacer(1, 4 * mm),
-        ]
-
-        late_minutes = int(session.late_time.total_seconds() // 60)
-        info = [
-            ["Status", session.status.title()],
-            ["Starts", fmt_dt(session.started_at)],
-            ["Ends", fmt_dt(session.ended_at)],
-            ["Late window", f"{late_minutes} min"],
-            [
-                "Summary",
-                f"Present {counts['present']} | Late {counts['late']} | "
-                f"Absent {counts['absent']} | Not set {counts['not set']}",
-            ],
-            ["Generated", fmt_dt(timezone.now())],
-        ]
-        info_table = Table(info, colWidths=[30 * mm, 150 * mm])
-        info_table.setStyle(
-            TableStyle(
-                [
-                    ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 9),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                    ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ]
-            )
-        )
-        story += [info_table, Spacer(1, 8 * mm)]
-
-        if len(rows) == 1:
-            story.append(Paragraph("No students found.", styles["Normal"]))
-        else:
-            table = Table(
-                rows,
-                colWidths=[10 * mm, 52 * mm, 60 * mm, 25 * mm, 33 * mm],
-                repeatRows=1,  # header repeats on every page
-            )
-            table.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#5B21B6")),
-                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("FONTSIZE", (0, 0), (-1, -1), 9),
-                        (
-                            "ROWBACKGROUNDS",
-                            (0, 1),
-                            (-1, -1),
-                            [colors.white, colors.HexColor("#F3F4F6")],
-                        ),
-                        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D1D5DB")),
-                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ("TOPPADDING", (0, 0), (-1, -1), 5),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                        *row_colors,
-                    ]
-                )
-            )
-            story.append(table)
-
-        doc.build(story)
-
-        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
-        response["Content-Disposition"] = (
-            f'attachment; filename="session-{session.id}-report.pdf"'
-        )
-        return response
+def unique_slug(value, exclude_pk=None):
+    base = slugify(value) or "tenant"
+    slug, n = base, 2
+    while Tenant.objects.filter(slug=slug).exclude(pk=exclude_pk).exists():
+        slug = f"{base}-{n}"
+        n += 1
+    return slug
 
 
-class AdminStatsView(APIView):
+def check_admin_data(data):
+    """Returns (cleaned, None) or (None, error message)."""
+    if not isinstance(data, dict):
+        return None, "admin details are required"
+
+    email = str(data.get("email", "")).strip().lower()
+    if not email:
+        return None, "admin email is required"
+
+    try:
+        validate_email(email)
+    except ValidationError:
+        return None, "Enter a valid admin email address"
+
+    if User.objects.filter(Q(email__iexact=email) | Q(username__iexact=email)).exists():
+        return None, "A user with this email already exists"
+
+    return {
+        "email": email,
+        "first_name": str(data.get("first_name", "")).strip(),
+        "last_name": str(data.get("last_name", "")).strip(),
+    }, None
+
+
+def create_tenant_admin(tenant, cleaned):
+    # No password is set. The admin chooses theirs through the reset link.
+    return User.objects.create_user(
+        username=cleaned["email"],
+        email=cleaned["email"],
+        password=None,
+        first_name=cleaned["first_name"],
+        last_name=cleaned["last_name"],
+        tenant=tenant,
+        is_tenant_admin=True,
+    )
+
+
+def send_invite(user):
+    """Emails a set-your-password link. Returns False if sending failed."""
+    ForgotPasswordRequest.objects.filter(user=user).delete()
+    request = ForgotPasswordRequest.objects.create(user=user)
+    try:
+        send_forgot_password_email(user, request.code)
+        return True
+    except Exception:
+        logger.exception("Tenant admin invite failed | user=%s", user.pk)
+        request.delete()
+        return False
+
+
+def tenant_payload(tenant_id):
+    return TenantSerializer(
+        with_counts(Tenant.objects.filter(pk=tenant_id)).first()
+    ).data
+
+
+# ---------------------------------------------------------------- overview
+
+
+class ConsoleStatsView(APIView):
+    """Platform-wide numbers only. No names, no sessions, no attendance rows."""
+
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        students = User.objects.filter(is_staff=False)
-        by_status = (
-            Attendance.objects.filter(user__is_staff=False)
-            .values("status")
-            .annotate(count=Count("id"))
+        tenants = Tenant.objects.aggregate(
+            total=Count("id"),
+            active=Count("id", filter=Q(is_active=True)),
+            suspended=Count("id", filter=Q(is_active=False)),
         )
 
-        def count(state):
-            return Count(
-                "attendances",
-                filter=Q(
-                    attendances__status=state,
-                    attendances__user__is_staff=False,
-                ),
-            )
-
-        recent = (
-            AttendanceSession.objects.annotate(
-                present=count("present"),
-                late=count("late"),
-                absent=count("absent"),
-            )
-            .order_by("-started_at")[:7]
-            .values("id", "name", "started_at", "status", "present", "late", "absent")
+        tenant_users = User.objects.filter(tenant__isnull=False)
+        users = tenant_users.aggregate(
+            members=Count("id", filter=Q(is_tenant_admin=False)),
+            admins=Count("id", filter=Q(is_tenant_admin=True)),
+            with_face=Count(
+                "id", filter=Q(is_tenant_admin=False, face_embeddings__isnull=False)
+            ),
         )
+
+        by_status = Attendance.objects.values("status").annotate(count=Count("id"))
+
+        newest = with_counts(Tenant.objects.all()).order_by("-created_at")[:5]
+        busiest = with_counts(Tenant.objects.all()).order_by("-session_count")[:5]
 
         return Response(
             {
-                "total_users": students.count(),
-                "active_users": students.filter(is_active=True).count(),
-                "users_with_face": students.exclude(
-                    face_embeddings__isnull=True
-                ).count(),
-                "total_sessions": AttendanceSession.objects.count(),
+                "tenants": tenants,
+                "users": users,
+                "sessions": AttendanceSession.objects.count(),
                 "attendance_by_status": {i["status"]: i["count"] for i in by_status},
-                "recent_sessions": list(recent),  # newest first
-            },
-            status=status.HTTP_200_OK,
+                "newest_tenants": TenantSerializer(newest, many=True).data,
+                "busiest_tenants": TenantSerializer(busiest, many=True).data,
+            }
         )
 
 
-class AdminUserListView(APIView):
+# ---------------------------------------------------------------- tenants
+
+
+class TenantListCreateView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        users = User.objects.exclude(is_staff=True).order_by("id")
+        tenants = with_counts(Tenant.objects.all())
 
-        search = request.query_params.get("search")
+        search = request.query_params.get("search", "").strip()
         if search:
-            users = users.filter(
-                Q(first_name__icontains=search)
-                | Q(last_name__icontains=search)
-                | Q(email__icontains=search)
+            tenants = tenants.filter(
+                Q(name__icontains=search) | Q(slug__icontains=search)
             )
 
-        section = request.query_params.get("section")
-        if section:
-            users = users.filter(section=section)
-
-        if not users.exists():
-            return Response(
-                {"error": "No user found"}, status=status.HTTP_404_NOT_FOUND
-            )
+        state = request.query_params.get("status")
+        if state == "active":
+            tenants = tenants.filter(is_active=True)
+        elif state == "suspended":
+            tenants = tenants.filter(is_active=False)
 
         return Response(
-            {"users": UserSerializer(users, many=True).data},
-            status=status.HTTP_200_OK,
+            {
+                "tenants": TenantSerializer(
+                    tenants.order_by("-created_at"), many=True
+                ).data
+            }
         )
 
     def post(self, request):
-        email = request.data.get("email", "")
-        password = request.data.get("password", "")
-        username = request.data.get("username") or email
+        """Body: {"name": "...", "slug": "optional", "admin": {"email", "first_name", "last_name"}}"""
+        name = str(request.data.get("name", "")).strip()
+        if not name:
+            return error("name is required")
 
-        if not email or not password:
-            return Response(
-                {"error": "email and password are required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        requested_slug = str(request.data.get("slug", "")).strip()
+        if requested_slug:
+            slug = slugify(requested_slug)
+            if not slug or Tenant.objects.filter(slug=slug).exists():
+                return error("That slug is invalid or already taken")
+        else:
+            slug = unique_slug(name)
 
-        if User.objects.filter(email=email).exists():
-            return Response(
-                {"error": "A user with this email already exists"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        cleaned, problem = check_admin_data(request.data.get("admin"))
+        if problem:
+            return error(problem)
 
-        user = User.objects.create_user(
-            username=username, email=email, password=password
-        )
-        for field in USER_EDITABLE_FIELDS:
-            if field in request.data and field not in ("email", "profile_picture"):
-                setattr(user, field, request.data[field])
-
-        picture = request.FILES.get("profile_picture")
-        if picture:
-            user.profile_picture = picture  # CloudinaryField uploads it on save
-
-        user.save()
+        try:
+            with transaction.atomic():
+                tenant = Tenant.objects.create(name=name, slug=slug)
+                admin = create_tenant_admin(tenant, cleaned)
+        except IntegrityError:
+            return error("Unable to create the tenant, please try again")
 
         return Response(
-            {"detail": "User created", "user": UserSerializer(user).data},
+            {
+                "detail": "Tenant created",
+                "tenant": tenant_payload(tenant.pk),
+                # False means the email failed. The admin can use "Forgot password".
+                "invite_sent": send_invite(admin),
+            },
             status=status.HTTP_201_CREATED,
         )
 
 
-class AdminUserDetailView(APIView):
+class TenantDetailView(APIView):
     permission_classes = [IsAdminUser]
 
-    def get_user(self, user_id):
-        return User.objects.filter(id=user_id).first()
+    def get_tenant(self, tenant_id):
+        return Tenant.objects.filter(id=tenant_id).first()
 
-    def get(self, request, user_id):
-        user = self.get_user(user_id)
-        if not user:
-            return Response(
-                {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
-            )
+    def get(self, request, tenant_id):
+        tenant = self.get_tenant(tenant_id)
+        if not tenant:
+            return error("Tenant not found", status.HTTP_404_NOT_FOUND)
 
-        attendances = Attendance.objects.filter(user=user)
-        return Response(
-            {
-                "user": UserSerializer(user).data,
-                "has_face": user.has_face,
-                "embeddings_updated_at": user.embeddings_updated_at,
-                "attendances": AttendanceSerializer(attendances, many=True).data,
-            },
-            status=status.HTTP_200_OK,
+        admins = User.objects.filter(tenant=tenant, is_tenant_admin=True).values(
+            "id", "first_name", "last_name", "email", "is_active", "email_verified"
         )
+        return Response({"tenant": tenant_payload(tenant.pk), "admins": list(admins)})
 
-    def patch(self, request, user_id):
-        user = self.get_user(user_id)
-        if not user:
-            return Response(
-                {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
-            )
+    def patch(self, request, tenant_id):
+        """Rename, change the slug, or suspend / reactivate with is_active."""
+        tenant = self.get_tenant(tenant_id)
+        if not tenant:
+            return error("Tenant not found", status.HTTP_404_NOT_FOUND)
 
-        email = request.data.get("email")
-        if email and User.objects.filter(email=email).exists():
-            return Response(
-                {"error": "A user with this email already exists"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        fields = []
 
-        picture = request.FILES.get("profile_picture")
-        if picture:
-            error = invalid_picture(picture)
-            if error:
-                return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+        if "name" in request.data:
+            name = str(request.data["name"]).strip()
+            if not name:
+                return error("name can't be empty")
+            tenant.name = name
+            fields.append("name")
 
-        serializer = AdminUserUpdateSerializer(user, data=request.data, partial=True)
-        if not serializer.is_valid():
-            return Response(
-                {"error": first_error(serializer.errors)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if "slug" in request.data:
+            slug = slugify(str(request.data["slug"]))
+            if (
+                not slug
+                or Tenant.objects.filter(slug=slug).exclude(pk=tenant.pk).exists()
+            ):
+                return error("That slug is invalid or already taken")
+            tenant.slug = slug
+            fields.append("slug")
 
-        if picture:
-            user.profile_picture = picture
+        if "is_active" in request.data:
+            value = request.data["is_active"]
+            if isinstance(value, str):
+                value = value.strip().lower() in ("true", "1")
+            tenant.is_active = bool(value)
+            fields.append("is_active")
 
-        try:
-            serializer.save()
-        except CloudinaryError as e:
-            return Response(
-                {"error": f"Image upload failed: {e}"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+        if fields:
+            tenant.save(update_fields=fields)
 
         return Response(
-            {"detail": "User updated", "user": UserSerializer(user).data},
-            status=status.HTTP_200_OK,
+            {"detail": "Tenant updated", "tenant": tenant_payload(tenant.pk)}
         )
 
-    def delete(self, request, user_id):
-        user = self.get_user(user_id)
-        if not user:
-            return Response(
-                {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
-            )
+    def delete(self, request, tenant_id):
+        """Permanent. The body must repeat the tenant's slug: {"confirm": "<slug>"}"""
+        tenant = self.get_tenant(tenant_id)
+        if not tenant:
+            return error("Tenant not found", status.HTTP_404_NOT_FOUND)
 
-        user.delete()
-        return Response({"detail": "User deleted"}, status=status.HTTP_200_OK)
+        if request.data.get("confirm") != tenant.slug:
+            return error("Send the tenant's slug as 'confirm' to delete it")
 
+        if User.objects.filter(tenant=tenant, is_staff=True).exists():
+            return error("This tenant contains a platform admin and can't be deleted")
 
-class AdminSessionListView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def get(self, request):
-        sessions = AttendanceSession.objects.all().order_by("-id")
-        if not sessions.exists():
-            return Response(
-                {"error": "No session found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        return Response(
-            {"sessions": AttendanceSessionSerializer(sessions, many=True).data},
-            status=status.HTTP_200_OK,
-        )
-
-
-class AdminSessionDetailView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def patch(self, request, session_id):
-        session = AttendanceSession.objects.filter(id=session_id).first()
-        if not session:
-            return Response(
-                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        serializer = AttendanceSessionSerializer(
-            session, data=request.data, partial=True
-        )
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        serializer.save()
-        return Response(
-            {"detail": "Session updated", "session": serializer.data},
-            status=status.HTTP_200_OK,
-        )
-
-    def delete(self, request, session_id):
-        session = AttendanceSession.objects.filter(id=session_id).first()
-        if not session:
-            return Response(
-                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        session.delete()
-        return Response({"detail": "Session deleted"}, status=status.HTTP_200_OK)
-
-
-class AdminAttendanceOverrideView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def put(self, request):
-        user_id = request.data.get("user_id", "")
-        session_id = request.data.get("session_id", "")
-        new_status = request.data.get("status", "")
-
-        if not user_id or not session_id or not new_status:
-            return Response(
-                {"error": "user_id, session_id and status are required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if new_status not in Attendance.Status.values:
-            return Response(
-                {"error": f"status must be one of {list(Attendance.Status.values)}"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        user = User.objects.filter(id=user_id).first()
-        session = AttendanceSession.objects.filter(id=session_id).first()
-        if not user or not session:
-            return Response(
-                {"error": "Invalid user_id or session_id"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        attendance, created = Attendance.objects.update_or_create(
-            user=user, session=session, defaults={"status": new_status}
-        )
-
-        return Response(
-            {
-                "detail": "Attendance created" if created else "Attendance updated",
-                "attendance": AttendanceSerializer(attendance).data,
-            },
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
-
-
-class AdminSessionStateView(APIView):
-    permission_classes = [IsAdminUser]
-
-    def patch(self, request, session_id):
-        session = AttendanceSession.objects.filter(id=session_id).first()
-        if not session:
-            return Response(
-                {"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        new_status = request.data.get("status", "")
-        if not new_status:
-            return Response(
-                {"error": "status is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if new_status not in AttendanceSession.Status.values:
-            return Response(
-                {
-                    "error": f"status must be one of {list(AttendanceSession.Status.values)}"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        marked_absent = 0
         with transaction.atomic():
-            session.status = new_status
-            session.save(update_fields=["status"])
+            AttendanceSession.objects.filter(
+                tenant=tenant
+            ).delete()  # cascades attendance
+            User.objects.filter(tenant=tenant).delete()
+            tenant.delete()
 
-            # Completing a session: everyone with no record becomes Absent
-            if new_status == AttendanceSession.Status.COMPLETED:
-                recorded = Attendance.objects.filter(session=session).values_list(
-                    "user_id", flat=True
-                )
-                missing = list(
-                    User.objects.filter(is_staff=False, is_active=True).exclude(
-                        id__in=recorded
-                    )
-                )
-                Attendance.objects.bulk_create(
-                    [
-                        Attendance(
-                            session=session,
-                            user=user,
-                            status=Attendance.Status.ABSENT,
-                        )
-                        for user in missing
-                    ],
-                    ignore_conflicts=True,
-                )
-                marked_absent = len(missing)
+        return Response({"detail": "Tenant deleted"})
 
+
+class TenantAdminCreateView(APIView):
+    """Add another admin to a tenant (for example when the first one is locked out)."""
+
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, tenant_id):
+        tenant = Tenant.objects.filter(id=tenant_id).first()
+        if not tenant:
+            return error("Tenant not found", status.HTTP_404_NOT_FOUND)
+
+        cleaned, problem = check_admin_data(request.data)
+        if problem:
+            return error(problem)
+
+        admin = create_tenant_admin(tenant, cleaned)
         return Response(
             {
-                "detail": "Session state updated",
-                "marked_absent": marked_absent,
-                "session": AttendanceSessionSerializer(session).data,
+                "detail": "Admin created",
+                "admin": {"id": admin.id, "email": admin.email},
+                "invite_sent": send_invite(admin),
             },
-            status=status.HTTP_200_OK,
+            status=status.HTTP_201_CREATED,
         )
 
 
-class UserTableDataView(APIView):
+class ReleaseListCreateView(generics.ListCreateAPIView):
+    queryset = DesktopRelease.objects.prefetch_related("assets")
+    serializer_class = DesktopReleaseSerializer
     permission_classes = [IsAdminUser]
 
-    def get(self, request):
-        users = User.objects.filter(is_staff=False).order_by("id")
-        if not users:
-            return Response(
-                {"error": "No users found"}, status=status.HTTP_400_BAD_REQUEST
-            )
 
-        users_data = []
+class ReleaseDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = DesktopRelease.objects.prefetch_related("assets")
+    serializer_class = DesktopReleaseSerializer
+    permission_classes = [IsAdminUser]
 
-        for user in users:
-            try:
-                profile_picture_url = user.profile_picture.url
-            except (ValueError, AttributeError):
-                profile_picture_url = None
 
-            users_data.append(
-                {
-                    "id": user.id,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "face_embeddings": user.has_face,
-                    "profile_picture": profile_picture_url,
-                }
-            )
+class ReleasePublishView(APIView):
 
-        return Response({"users": users_data})
+    permission_classes = [IsAdminUser]
+    publish = True
+
+    def post(self, request, pk):
+        release = get_object_or_404(
+            DesktopRelease.objects.prefetch_related("assets"), pk=pk
+        )
+
+        if self.publish:
+            if not release.assets.exists():
+                return Response(
+                    {"error": "Add at least one download before publishing."},
+                    status=400,
+                )
+            if not release.is_published:
+                release.is_published = True
+                release.published_at = timezone.now()
+        elif release.is_published:
+            release.is_published = False
+            release.published_at = None
+
+        release.save(update_fields=["is_published", "published_at", "updated_at"])
+        return Response(DesktopReleaseSerializer(release).data)
+
+
+class AssetListCreateView(generics.ListCreateAPIView):
+
+    serializer_class = DesktopReleaseAssetSerializer
+    permission_classes = [IsAdminUser]
+
+    def get_queryset(self):
+        qs = DesktopReleaseAsset.objects.select_related("release")
+        release_id = self.request.query_params.get("release")
+        if release_id and release_id.isdigit():
+            qs = qs.filter(release_id=release_id)
+        return qs.order_by("release_id", "platform", "architecture")
+
+
+class AssetDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = DesktopReleaseAsset.objects.select_related("release")
+    serializer_class = DesktopReleaseAssetSerializer
+    permission_classes = [IsAdminUser]
+

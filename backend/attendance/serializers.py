@@ -10,7 +10,6 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
         model = AttendanceSession
         fields = [
             "id",
-            "created_by",
             "name",
             "started_at",
             "ended_at",
@@ -19,22 +18,16 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = [
-            "id",
-            "created_by",
             "status",
             "created_at",
         ]
 
-    def validate(self, attrs):
-        started_at = attrs.get("started_at")
-        ended_at = attrs.get("ended_at")
-
-        if started_at and ended_at and ended_at <= started_at:
-            raise serializers.ValidationError(
-                {"ended_at": "ended_at must be later than started_at."}
-            )
-
-        return attrs
+    def validate(self, data):
+        started = data.get("started_at")
+        ended = data.get("ended_at")
+        if started and ended and ended <= started:
+            raise serializers.ValidationError("ended_at must be after started_at.")
+        return data
 
 
 class AttendanceSerializer(serializers.ModelSerializer):
