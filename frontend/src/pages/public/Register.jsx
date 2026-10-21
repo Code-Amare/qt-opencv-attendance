@@ -12,27 +12,17 @@ const baseField =
   "w-full rounded-sm border bg-background-elevated px-3 py-2.5 text-sm " +
   "placeholder:text-foreground-subtle focus:outline-none";
 
-const textFields = [
-  {
-    name: "organization_name",
-    label: "Organization name",
-    autoComplete: "organization",
-  },
-  { name: "username", label: "Username", autoComplete: "username" },
-  { name: "email", label: "Email", type: "email", autoComplete: "email" },
-];
-
 const Register = () => {
   const { user } = useAuth();
   const { updatePageTitle } = usePageTitle();
 
   const [form, setForm] = useState({
     organization_name: "",
+    first_name: "",
+    last_name: "",
     username: "",
     email: "",
     password: "",
-    first_name: "",
-    last_name: "",
   });
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState("");
@@ -95,10 +85,7 @@ const Register = () => {
       const errors = err.response?.data?.errors;
       if (errors) setFieldErrors(errors);
       setError(
-        getErrorMessage(
-          err,
-          "Unable to create your account. Please try again.",
-        ),
+        getErrorMessage(err, "Unable to create your account. Please try again."),
       );
     } finally {
       setLoading(false);
@@ -112,14 +99,31 @@ const Register = () => {
         : "border-white/10 focus:border-primary-hover"
     }`;
 
-  const errorText = (name) =>
-    fieldErrors[name] ? (
-      <p className="mt-1 text-xs text-danger">
-        {Array.isArray(fieldErrors[name])
-          ? fieldErrors[name][0]
-          : fieldErrors[name]}
-      </p>
-    ) : null;
+  const renderField = (name, label, props = {}) => (
+    <div>
+      <label
+        htmlFor={name}
+        className="mb-1.5 block text-sm text-foreground-muted"
+      >
+        {label}
+      </label>
+      <input
+        id={name}
+        type="text"
+        name={name}
+        aria-invalid={!!fieldErrors[name]}
+        value={form[name]}
+        onChange={onChange}
+        className={fieldClass(name)}
+        {...props}
+      />
+      {fieldErrors[name] && (
+        <p className="mt-1 text-xs text-danger">
+          {[].concat(fieldErrors[name])[0]}
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -130,7 +134,7 @@ const Register = () => {
       </header>
 
       <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-lg">
           <h1 className="text-2xl font-semibold tracking-tight">
             Create your workspace
           </h1>
@@ -163,65 +167,27 @@ const Register = () => {
                   </Alert>
                 )}
 
-                {textFields.map((field) => (
-                  <div key={field.name}>
-                    <label
-                      htmlFor={field.name}
-                      className="mb-1.5 block text-sm text-foreground-muted"
-                    >
-                      {field.label}
-                    </label>
-                    <input
-                      id={field.name}
-                      type={field.type || "text"}
-                      name={field.name}
-                      autoComplete={field.autoComplete}
-                      aria-invalid={!!fieldErrors[field.name]}
-                      value={form[field.name]}
-                      onChange={onChange}
-                      className={fieldClass(field.name)}
-                    />
-                    {errorText(field.name)}
-                  </div>
-                ))}
+                {renderField("organization_name", "Organization name", {
+                  autoComplete: "organization",
+                })}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label
-                      htmlFor="first_name"
-                      className="mb-1.5 block text-sm text-foreground-muted"
-                    >
-                      First name
-                    </label>
-                    <input
-                      id="first_name"
-                      type="text"
-                      name="first_name"
-                      autoComplete="given-name"
-                      value={form.first_name}
-                      onChange={onChange}
-                      className={fieldClass("first_name")}
-                    />
-                    {errorText("first_name")}
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="last_name"
-                      className="mb-1.5 block text-sm text-foreground-muted"
-                    >
-                      Last name
-                    </label>
-                    <input
-                      id="last_name"
-                      type="text"
-                      name="last_name"
-                      autoComplete="family-name"
-                      value={form.last_name}
-                      onChange={onChange}
-                      className={fieldClass("last_name")}
-                    />
-                    {errorText("last_name")}
-                  </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {renderField("first_name", "First name", {
+                    autoComplete: "given-name",
+                  })}
+                  {renderField("last_name", "Last name", {
+                    autoComplete: "family-name",
+                  })}
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {renderField("username", "Username", {
+                    autoComplete: "username",
+                  })}
+                  {renderField("email", "Email", {
+                    type: "email",
+                    autoComplete: "email",
+                  })}
                 </div>
 
                 <div>

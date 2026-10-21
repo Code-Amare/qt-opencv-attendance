@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import Home from "./pages/public/Home";
 import Login from "./pages/public/Login";
+import Register from "./pages/public/Register";
 import Contact from "./pages/public/Contact.jsx";
 import ForgotPassword from "./pages/public/ForgotPassword.jsx";
 import ResetPassword from "./pages/public/ResetPassword.jsx";
@@ -26,6 +27,7 @@ const App = () => {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/contact" element={<Contact />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:code" element={<ResetPassword />} />

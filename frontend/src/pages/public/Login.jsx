@@ -179,12 +179,12 @@ const Login = () => {
           <GoogleAuthButton />
 
           <p className="mt-8 text-sm text-foreground-muted">
-            Accounts are created by your administrator. Need access?{" "}
+            Don't have an account?{" "}
             <Link
-              to="/contact"
+              to="/register"
               className="text-foreground underline underline-offset-4 hover:text-primary-hover"
             >
-              Contact support
+              Register
             </Link>
           </p>
         </div>

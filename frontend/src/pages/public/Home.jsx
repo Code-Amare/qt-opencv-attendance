@@ -3,13 +3,12 @@ import { Link } from "react-router-dom";
 import api from "../../lib/axios";
 import { usePageTitle } from "../../context/PageTitleContext";
 
-// Adjust to match your Django urls.py (maps to HomeStatsView)
 const HOME_URL = "/site/home/";
 
 const features = [
   [
     "Face enrollment",
-    "Administrators enroll students and teachers by capturing a few frames per person.",
+    "Enroll students and teachers by capturing a few frames per person.",
   ],
   [
     "Live recognition",
@@ -21,7 +20,7 @@ const features = [
   ],
   [
     "User management",
-    "Admins create and manage students and teachers, and their face status, from one table.",
+    "Create and manage students and teachers, and their face status, from one table.",
   ],
   [
     "Reports",
@@ -35,8 +34,8 @@ const features = [
 
 const steps = [
   [
-    "Admin adds users",
-    "Administrators create student and teacher accounts and enroll their faces.",
+    "Create your workspace",
+    "Register your organization, then add students and teachers and enroll their faces.",
   ],
   [
     "Start a session",
@@ -68,7 +67,7 @@ export default function Home() {
     api
       .get(HOME_URL, { skipAuthRefresh: true })
       .then((res) => !cancelled && setData(res.data))
-      .catch(() => {}) // the page still works with placeholders
+      .catch(() => {})
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -87,7 +86,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Nav */}
       <header className="sticky top-0 z-10 border-b border-white/5 bg-background">
         <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <Link to="/" className="text-base font-semibold tracking-tight">
@@ -104,19 +102,26 @@ export default function Home() {
               Download
             </Link>
             <a href="#access" className="hover:text-foreground">
-              Access
+              Get started
             </a>
           </div>
-          <Link
-            to="/login"
-            className="rounded-sm bg-primary px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-hover"
-          >
-            Sign in
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/login"
+              className="rounded-sm px-4 py-1.5 text-sm text-foreground-muted hover:text-foreground"
+            >
+              Sign in
+            </Link>
+            <Link
+              to="/register"
+              className="rounded-sm bg-primary px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-hover"
+            >
+              Register
+            </Link>
+          </div>
         </nav>
       </header>
 
-      {/* Hero */}
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-2 lg:py-28">
         <div>
           <p className="text-xs font-medium uppercase tracking-widest text-foreground-subtle">
@@ -131,16 +136,16 @@ export default function Home() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
-              to="/login"
+              to="/register"
               className="rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover"
             >
-              Sign in
+              Register
             </Link>
             <Link
-              to="/release"
+              to="/login"
               className="rounded-sm border border-white/10 px-5 py-2.5 text-sm text-foreground hover:bg-background-elevated"
             >
-              Download the app
+              Sign in
             </Link>
             <a
               href="#features"
@@ -151,7 +156,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Preview: overall totals only, no session or user data */}
         <div className="border border-white/10 bg-background-surface">
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
             <span className="text-sm font-medium">Attendance overview</span>
@@ -192,7 +196,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Stats */}
       <section className="border-y border-white/5 bg-background-surface">
         <div className="mx-auto grid max-w-6xl divide-white/5 sm:grid-cols-3 sm:divide-x">
           {stats.map(([value, label]) => (
@@ -204,7 +207,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Features */}
       <section id="features" className="mx-auto max-w-6xl px-6 py-24">
         <h2 className="text-2xl font-semibold tracking-tight">
           Everything you need to run attendance
@@ -221,7 +223,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* How it works */}
       <section
         id="how"
         className="border-t border-white/5 bg-background-surface"
@@ -244,18 +245,18 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Access */}
       <section id="access" className="mx-auto max-w-6xl px-6 py-24">
         <div className="flex flex-col items-start justify-between gap-6 border border-white/10 bg-background-surface p-8 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-xl font-semibold tracking-tight">
-              Already have an account?
+              Ready to get started?
             </h2>
             <p className="mt-1 text-sm text-foreground-muted">
-              Sign in with the credentials provided by your administrator.
+              Create a workspace for your organization, or sign in if you
+              already have an account.
             </p>
           </div>
-          <div className="flex shrink-0 gap-3">
+          <div className="flex shrink-0 flex-wrap gap-3">
             <Link
               to="/release"
               className="rounded-sm border border-white/10 px-5 py-2.5 text-sm text-foreground hover:bg-background-elevated"
@@ -264,15 +265,20 @@ export default function Home() {
             </Link>
             <Link
               to="/login"
-              className="rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover"
+              className="rounded-sm border border-white/10 px-5 py-2.5 text-sm text-foreground hover:bg-background-elevated"
             >
               Sign in
+            </Link>
+            <Link
+              to="/register"
+              className="rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover"
+            >
+              Register
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="border-t border-white/5">
         <div className="mx-auto flex max-w-6xl flex-col justify-between gap-4 px-6 py-8 text-sm text-foreground-subtle sm:flex-row">
           <span>© {new Date().getFullYear()} FaceCall</span>
