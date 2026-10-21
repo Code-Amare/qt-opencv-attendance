@@ -1,32 +1,20 @@
 import cv2
 import numpy as np
-import torch
+import onnxruntime as ort
 
-from models.fastnet import MiniFASNetV2
+from utils import resource_path
 
-
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-MODEL = MiniFASNetV2()
-
-MODEL.load_state_dict(
-    torch.load(
-        "models/MiniFASNetV2.pth",
-        map_location=DEVICE,
-        weights_only=True
-    )
+SESSION = ort.InferenceSession(
+    str(resource_path("models/MiniFASNetV2.onnx")),
+    providers=["CPUExecutionProvider"],
 )
-
-MODEL.to(DEVICE)
-MODEL.eval()
+INPUT_NAME = SESSION.get_inputs()[0].name
 
 
 def is_face_real(image, bbox):
-
     x1, y1, x2, y2 = map(int, bbox)
 
-    # Convert YOLO bbox: [x1, y1, x2, y2]
-    # to [x, y, width, height]
+    # Convert bbox [x1, y1, x2, y2] to [x, y, width, height]
     x = x1
     y = y1
     width = x2 - x1
@@ -35,11 +23,7 @@ def is_face_real(image, bbox):
     # MiniFASNet preprocessing
     image_height, image_width = image.shape[:2]
 
-    scale = min(
-        (image_height - 1) / height,
-        (image_width - 1) / width,
-        2.7
-    )
+    scale = min((image_height - 1) / height, (image_width - 1) / width, 2.7)
 
     new_width = width * scale
     new_height = height * scale
@@ -49,40 +33,23 @@ def is_face_real(image, bbox):
 
     crop_x1 = max(0, int(center_x - new_width / 2))
     crop_y1 = max(0, int(center_y - new_height / 2))
+    crop_x2 = min(image_width - 1, int(center_x + new_width / 2))
+    crop_y2 = min(image_height - 1, int(center_y + new_height / 2))
 
-    crop_x2 = min(
-        image_width - 1,
-        int(center_x + new_width / 2)
-    )
-
-    crop_y2 = min(
-        image_height - 1,
-        int(center_y + new_height / 2)
-    )
-
-    face = image[
-        crop_y1:crop_y2 + 1,
-        crop_x1:crop_x2 + 1
-    ]
+    face = image[crop_y1 : crop_y2 + 1, crop_x1 : crop_x2 + 1]
 
     # Model expects 80x80
     face = cv2.resize(face, (80, 80))
 
-    # HWC -> CHW
-    face = torch.from_numpy(
-        face.transpose(2, 0, 1)
-    ).float()
+    # HWC -> CHW, add batch dimension
+    face = np.ascontiguousarray(face.transpose(2, 0, 1)[None], dtype=np.float32)
 
-    # Add batch dimension and move to GPU/CPU
-    face = face.unsqueeze(0).to(DEVICE)
+    logits = SESSION.run(None, {INPUT_NAME: face})[0][0]
+    e = np.exp(logits - logits.max())
+    probabilities = e / e.sum()
 
-    with torch.no_grad():
-        output = MODEL(face)
-        probabilities = torch.softmax(output, dim=1)
-
-    class_id = int(torch.argmax(probabilities, dim=1).item())
-    confidence = float(probabilities[0, class_id].item())
+    class_id = int(np.argmax(probabilities))
+    confidence = float(probabilities[class_id])
 
     label = "Real" if class_id == 1 else "Fake"
-
     return label, confidence

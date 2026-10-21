@@ -35,11 +35,12 @@ from common import (
     largest_face,
     run,
 )
+from utils import data_path
 
 
 class SessionsPage(QWidget):
     session_loaded = pyqtSignal()
-    EMBEDDINGS_PATH = "face_embeddings.npz"
+    EMBEDDINGS_PATH = data_path("face_embeddings.npz")
     STATUS_COLORS = {
         "active": "#10B981",
         "completed": "#3B82F6",
@@ -156,12 +157,12 @@ class SessionsPage(QWidget):
                 os.path.getmtime(self.EMBEDDINGS_PATH)
             ).strftime("%b %d, %H:%M")
             self.local_radio.setEnabled(True)
-            self.local_hint.setText(f"{self.EMBEDDINGS_PATH} · updated {updated}")
+            self.local_hint.setText(f"{self.EMBEDDINGS_PATH.name} · updated {updated}")
             if not self.download_radio.isChecked():
                 self.local_radio.setChecked(True)
         else:
             self.local_radio.setEnabled(False)
-            self.local_hint.setText(f"{self.EMBEDDINGS_PATH} not found")
+            self.local_hint.setText(f"{self.EMBEDDINGS_PATH.name} not found")
             self.download_radio.setChecked(True)
 
     def selected_session(self):

@@ -1,7 +1,32 @@
+import os
+import sys
+
+# --windowed has no console: make print/warnings safe.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+
+# Load onnxruntime (and the CUDA DLLs) before PyQt5 / OpenCV.
+if getattr(sys, "frozen", False):
+    _nv = os.path.join(sys._MEIPASS, "nvidia")
+    if os.path.isdir(_nv):
+        for _name in os.listdir(_nv):
+            _bin = os.path.join(_nv, _name, "bin")
+            if os.path.isdir(_bin):
+                os.add_dll_directory(_bin)
+                os.environ["PATH"] = _bin + os.pathsep + os.environ.get("PATH", "")
+
+import onnxruntime as ort
+
+try:
+    ort.preload_dlls()
+except Exception:
+    pass
+
 from insightface.app import FaceAnalysis
 import asyncio
 import ctypes
-import sys
 from datetime import datetime
 from string import Template
 
@@ -36,7 +61,7 @@ from pyqtspinner.spinner import WaitingSpinner
 from qasync import QEventLoop, asyncSlot
 
 from anti_spoof import is_face_real
-from utils import TitleBar, app_icon, default_avatar, get_image
+from utils import TitleBar, app_icon, default_avatar, get_image, resource_path
 
 # Windows groups taskbar buttons by this id. Without it, running as
 # `python app.py` shows the Python icon instead of ours.
@@ -782,7 +807,8 @@ class BaseWindow(QMainWindow):
     Flow: login -> camera select page -> on_login_successful()."""
 
     PRODUCT_NAME = "FaceCall"
-    BASE_URL = "https://localhost:8000/api/"
+    # BASE_URL = "https://localhost:8000/api/"
+    BASE_URL = "https://facecall-backend.up.railway.app/api/"
     SIMILARITY_THRESHOLD = 0.50
     CAMERA_INDEX = 1  # default; overwritten by the camera select page
     STREAK_THRESHOLD = 20
@@ -800,6 +826,8 @@ class BaseWindow(QMainWindow):
 
         self.face_app = FaceAnalysis(
             name="buffalo_l",
+            root=str(resource_path("insightface_root")),
+            allowed_modules=["detection", "recognition"],
             providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
         )
         self.face_app.prepare(ctx_id=0, det_size=(640, 640))

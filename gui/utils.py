@@ -1,13 +1,28 @@
+import sys
 from pathlib import Path
-
+import os
 import aiohttp
 from PyQt5.QtCore import Qt, QByteArray, QSize
 from PyQt5.QtGui import QIcon, QPixmap, QPainter
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QWidget, QLabel, QHBoxLayout, QToolButton
 
-# ./assets/FaceCall.ico (next to this file)
-ICON_PATH = Path(__file__).resolve().parent / "assets" / "FaceCall.ico"
+
+def resource_path(rel: str) -> Path:
+    """Path to a bundled file: works from source and inside a PyInstaller exe."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base / rel
+
+
+def data_path(name: str) -> Path:
+    """Writable per-user folder for files the app saves (survives updates)."""
+    folder = Path(os.environ.get("APPDATA", Path.home())) / "FaceCall"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / name
+
+
+# assets/FaceCall.ico (bundled with --add-data "assets;assets")
+ICON_PATH = resource_path("assets/FaceCall.ico")
 
 # Size (px) of the icon in the title bar. Change this number to resize it.
 # The title bar is 48px tall, so keep it at 40 or less.
@@ -44,7 +59,7 @@ def icon_from_svg(svg_text, sizes=(16, 24, 32, 48, 64, 128, 256)):
 
 
 def app_icon():
-    """The app icon: the image at ./assets/FaceCall.ico (no SVG involved)."""
+    """The app icon: the image at assets/FaceCall.ico (no SVG involved)."""
     icon = QIcon(str(ICON_PATH))  # keeps every size stored inside the .ico
     if icon.isNull():
         print(f"Could not load app icon: {ICON_PATH}")
@@ -53,7 +68,7 @@ def app_icon():
     if biggest < 256:
         print(
             f"Warning: {ICON_PATH.name} only goes up to {biggest}px, so it will "
-            "look blurry. Rebuild it with make_ico.py (needs a 256px+ source)."
+            "look blurry. Rebuild it with make_icon.py (needs a 256px+ source)."
         )
     return icon
 
@@ -163,7 +178,6 @@ def default_avatar(size=128):
 async def get_image(
     source: str, session: aiohttp.ClientSession = None, size: int = 256
 ):
-    print(source)
     try:
         if source.lower().startswith(("http://", "https://")):
             if session is None:
