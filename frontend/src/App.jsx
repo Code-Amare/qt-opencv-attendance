@@ -16,6 +16,9 @@ import LoginViaLink from "./pages/public/LoginViaLink.jsx";
 import UserDetail from "./pages/admin/UserDetail.jsx";
 import Releases from "./pages/admin/Releases.jsx";
 import ReleaseEdit from "./pages/admin/ReleaseEdit.jsx";
+import Release from "./pages/public/Release.jsx";
+import Profile from "./pages/admin/Profile.jsx";
+import ProfileEdit from "./pages/admin/ProfileEdit.jsx";
 
 const App = () => {
   return (
@@ -25,6 +28,7 @@ const App = () => {
       <Route path="/contact" element={<Contact />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:code" element={<ResetPassword />} />
+      <Route path="/release" element={<Release />} />
       <Route path="/login/:code" element={<LoginViaLink />} />
 
       <Route element={<ProtectedRoute roles={["admin"]} />}>
@@ -42,6 +46,8 @@ const App = () => {
           <Route path="/admin/releases" element={<Releases />} />
           <Route path="/admin/releases/new" element={<ReleaseEdit />} />
           <Route path="/admin/releases/:id" element={<ReleaseEdit />} />
+          <Route path="/admin/profile" element={<Profile />} />
+          <Route path="/admin/profile/edit" element={<ProfileEdit />} />
 
           {/* pages still to build
           <Route path="/admin/releases" element={<Releases />} />

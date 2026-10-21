@@ -292,7 +292,7 @@ class AdminUserDetailView(APIView):
     permission_classes = [IsAdminUser]
 
     def get_user(self, user_id):
-        return User.objects.filter(id=user_id, is_staff=False).first()
+        return User.objects.filter(id=user_id).first()
 
     def get(self, request, user_id):
         user = self.get_user(user_id)
@@ -320,7 +320,7 @@ class AdminUserDetailView(APIView):
             )
 
         email = request.data.get("email")
-        if email and User.objects.filter(email=email).exclude(id=user.id).exists():
+        if email and User.objects.filter(email=email).exists():
             return Response(
                 {"error": "A user with this email already exists"},
                 status=status.HTTP_400_BAD_REQUEST,
