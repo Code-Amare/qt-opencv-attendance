@@ -6,10 +6,12 @@ from .models import User
 from tenant.models import Tenant
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
+from tenant.serializers import TenantSerializer
 
 
 class UserSerializer(serializers.ModelSerializer):
     profile_picture = serializers.SerializerMethodField()
+    tenant = TenantSerializer()
 
     class Meta:
         model = User
@@ -27,6 +29,8 @@ class UserSerializer(serializers.ModelSerializer):
             "two_factor_enabled",
             "is_staff",
             "is_active",
+            "tenant",
+            "is_tenant_admin",
         ]
         read_only_fields = [
             "id",

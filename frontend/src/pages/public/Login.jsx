@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import GoogleAuthButton from "../../components/GoogleAuthButton";
 import PasswordInput from "../../components/PasswordInput";
 import Alert from "../../components/Alert";
@@ -13,7 +13,6 @@ const baseField =
   "placeholder:text-foreground-subtle focus:outline-none";
 
 const Login = () => {
-  const navigate = useNavigate();
   const { user, login } = useAuth();
   const { updatePageTitle } = usePageTitle();
 
@@ -26,12 +25,20 @@ const Login = () => {
     updatePageTitle("Sign in");
   }, []);
 
-  if (user.isAuthenticated && user.isStaff) {
-    return <Navigate to="/admin/dashboard" replace />;
-  }
-
   if (user.isAuthenticated) {
-    return <Navigate to="dashboard" replace />;
+    if (user.isStaff) {
+      return <Navigate to="/admin/dashboard" replace />;
+    }
+
+    if (user.tenant && user.isTenantAdmin) {
+      return <Navigate to={`/${user.tenant.slug}/admin/dashboard`} replace />;
+    }
+
+    if (user.tenant) {
+      return <Navigate to={`/${user.tenant.slug}/dashboard`} replace />;
+    }
+
+    return <Navigate to="/dashboard" replace />;
   }
 
   const onChange = (e) => {
@@ -55,7 +62,6 @@ const Login = () => {
       });
       const data = res.data;
 
-      // Two-factor: a login link was emailed, no session yet
       if (data.twofa_required) {
         if (data.error) return setError(data.error);
         setForm({ ...form, password: "" });
@@ -65,11 +71,6 @@ const Login = () => {
       }
 
       login(data.user);
-      if (data.user.is_staff) {
-        navigate("/admin/dashboard");
-      } else {
-        navigate("/dashboard");
-      }
     } catch (err) {
       setError(getErrorMessage(err, "Unable to sign in. Please try again."));
     } finally {

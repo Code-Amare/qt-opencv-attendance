@@ -7,13 +7,14 @@ import ResetPassword from "./pages/public/ResetPassword.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import ProtectedRoute from "./components/ProtectedPagesWrapper.jsx";
 import DashboardLayout from "./components/DashboardLayout.jsx";
-import Users from "./pages/admin/Users.jsx";
-import UserEdit from "./pages/admin/UserEdit.jsx";
-import UserNew from "./pages/admin/UserNew.jsx";
-import Sessions from "./pages/admin/Sessions.jsx";
-import SessionDetail from "./pages/admin/SessionDetail.jsx";
+import Users from "./pages/tenant/Users.jsx";
+import Tenants from "./pages/admin/Tenants.jsx";
+import UserEdit from "./pages/tenant/UserEdit.jsx";
+import UserNew from "./pages/tenant/UserNew.jsx";
+import Sessions from "./pages/tenant/Sessions.jsx";
+import SessionDetail from "./pages/tenant/SessionDetail.jsx";
 import LoginViaLink from "./pages/public/LoginViaLink.jsx";
-import UserDetail from "./pages/admin/UserDetail.jsx";
+import TenantDetail from "./pages/admin/TenantDetail.jsx";
 import Releases from "./pages/admin/Releases.jsx";
 import ReleaseEdit from "./pages/admin/ReleaseEdit.jsx";
 import Release from "./pages/public/Release.jsx";
@@ -35,10 +36,7 @@ const App = () => {
         <Route element={<DashboardLayout />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
 
-          <Route path="/admin/users" element={<Users />} />
-          <Route path="/admin/users/new" element={<UserNew />} />
-          <Route path="/admin/users/:id" element={<UserDetail />} />
-          <Route path="/admin/users/:id/edit" element={<UserEdit />} />
+          <Route path="/admin/tenants" element={<Tenants />} />
 
           <Route path="/admin/sessions" element={<Sessions />} />
           <Route path="/admin/sessions/:id" element={<SessionDetail />} />

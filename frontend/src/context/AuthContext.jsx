@@ -26,7 +26,22 @@ const initialUser = {
   emailVerified: null,
   twoFactorEnabled: null,
   isStaff: null,
+
+  tenant: null,
+  isTenantAdmin: false,
 };
+
+function formatTenant(tenantData) {
+  if (!tenantData) return null;
+
+  return {
+    id: tenantData.id,
+    name: tenantData.name,
+    slug: tenantData.slug,
+    isActive: tenantData.is_active,
+    createdAt: tenantData.created_at,
+  };
+}
 
 function formatUser(userData) {
   return {
@@ -51,6 +66,9 @@ function formatUser(userData) {
     emailVerified: userData.email_verified,
     twoFactorEnabled: userData.two_factor_enabled,
     isStaff: userData.is_staff,
+
+    tenant: formatTenant(userData.tenant),
+    isTenantAdmin: Boolean(userData.is_tenant_admin),
   };
 }
 
@@ -70,7 +88,7 @@ export function AuthProvider({ children }) {
       setUser(formatUser(userData));
     } catch (error) {
       setUser(initialUser);
-      console.log(error.response.data.detail);
+      console.log(error.response?.data?.detail);
     } finally {
       setLoading(false);
     }
@@ -88,11 +106,9 @@ export function AuthProvider({ children }) {
 
   const updateProfile = async (payload) => {
     try {
-      // payload = { first_name, last_name, phone_number, date_of_birth, gender }
       const response = await api.patch("/users/profile/update/", payload);
-      const updatedUser = response.data.user; // as per your response
+      const updatedUser = response.data.user;
 
-      // Update the user state with the new data
       setUser(formatUser(updatedUser));
       return { success: true };
     } catch (error) {
