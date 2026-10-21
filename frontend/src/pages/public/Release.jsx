@@ -13,7 +13,7 @@ import { getErrorMessage } from "../../lib/errors";
 import { usePageTitle } from "../../context/PageTitleContext";
 
 // Adjust to match your Django urls.py (maps to LatestReleaseView)
-const LATEST_RELEASE_URL = "/site/releases/latest/";
+const LATEST_RELEASE_URL = "/releases/latest/";
 
 const OS_LIST = [
   {
