@@ -9,6 +9,30 @@ from django.db.models import Q
 from tenant.serializers import TenantSerializer
 
 
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            "first_name",
+            "last_name",
+            "section",
+            "phone_number",
+            "date_of_birth",
+        ]
+        extra_kwargs = {
+            "first_name": {"required": False, "allow_blank": True},
+            "last_name": {"required": False, "allow_blank": True},
+            "section": {"required": False, "allow_blank": True, "allow_null": True},
+            "phone_number": {
+                "required": False,
+                "allow_blank": True,
+                "allow_null": True,
+            },
+            "date_of_birth": {"required": False, "allow_null": True},
+        }
+
+
 class UserSerializer(serializers.ModelSerializer):
     profile_picture = serializers.SerializerMethodField()
     tenant = TenantSerializer()

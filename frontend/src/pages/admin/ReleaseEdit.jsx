@@ -11,7 +11,8 @@ const PLATFORMS = ["windows", "macos", "linux"];
 const ARCHS = ["x64", "arm64"];
 
 const inputClass =
-  "w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary";
+  "w-full rounded-sm border border-white/10 bg-background-elevated px-3 py-2.5 text-sm " +
+  "placeholder:text-foreground-subtle focus:border-primary-hover focus:outline-none";
 
 const emptyAsset = {
   platform: "windows",
@@ -136,17 +137,16 @@ export default function ReleaseEdit() {
         </Alert>
       )}
 
-      {/* Release details */}
       <form
         onSubmit={onSubmit}
         className="border border-white/10 bg-background-surface"
       >
-        <div className="border-b border-white/10 px-4 py-3 text-sm font-medium">
+        <div className="flex h-12 items-center border-b border-white/10 px-4 text-sm font-medium">
           Details
         </div>
         <div className="space-y-4 p-6">
-          <label className="block space-y-1 text-sm">
-            <span className="text-foreground-muted">Version</span>
+          <label className="block text-sm">
+            <span className="mb-1.5 block text-foreground-muted">Version</span>
             <input
               name="version"
               value={form.version}
@@ -157,8 +157,10 @@ export default function ReleaseEdit() {
               className={inputClass}
             />
           </label>
-          <label className="block space-y-1 text-sm">
-            <span className="text-foreground-muted">Release notes</span>
+          <label className="block text-sm">
+            <span className="mb-1.5 block text-foreground-muted">
+              Release notes
+            </span>
             <textarea
               name="release_notes"
               value={form.release_notes}
@@ -168,32 +170,34 @@ export default function ReleaseEdit() {
             />
           </label>
         </div>
-        <div className="flex justify-end gap-3 border-t border-white/10 px-4 py-3">
+        <div className="flex items-center justify-end gap-3 border-t border-white/10 px-4 py-3">
           <Link
             to="/admin/releases"
-            className="px-3 py-1.5 text-sm text-foreground-muted hover:text-foreground"
+            className="rounded-sm px-4 py-2 text-sm text-foreground-muted hover:text-foreground"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={saving}
-            className="cursor-pointer bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
+            className="cursor-pointer rounded-sm bg-primary px-5 py-2 text-sm font-medium text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? "Saving…" : isNew ? "Create release" : "Save changes"}
           </button>
         </div>
       </form>
 
-      {/* Downloads (only once the release exists) */}
       {isNew ? (
         <p className="text-sm text-foreground-muted">
           Save the release first, then add its downloads.
         </p>
       ) : (
         <section className="border border-white/10 bg-background-surface">
-          <div className="border-b border-white/10 px-4 py-3 text-sm font-medium">
-            Downloads
+          <div className="flex h-12 items-center justify-between border-b border-white/10 px-4">
+            <span className="text-sm font-medium">Downloads</span>
+            <span className="text-xs text-foreground-subtle">
+              {assets.length} {assets.length === 1 ? "download" : "downloads"}
+            </span>
           </div>
 
           {assets.length === 0 ? (
@@ -225,7 +229,7 @@ export default function ReleaseEdit() {
                   </div>
                   <button
                     onClick={() => setAssetToDelete(a)}
-                    className="cursor-pointer text-xs text-danger hover:underline"
+                    className="shrink-0 cursor-pointer text-xs text-danger hover:underline"
                   >
                     Delete
                   </button>
@@ -291,7 +295,7 @@ export default function ReleaseEdit() {
             <button
               type="submit"
               disabled={addingAsset}
-              className="cursor-pointer bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50 sm:col-span-2"
+              className="cursor-pointer rounded-sm bg-primary px-5 py-2.5 text-sm font-medium text-white transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
             >
               {addingAsset ? "Adding…" : "Add download"}
             </button>

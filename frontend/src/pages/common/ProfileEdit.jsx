@@ -103,7 +103,7 @@ export default function ProfileEdit() {
         formData.append("profile_picture", profilePicture);
       }
 
-      const res = await api.patch(`/admin/users/${user.id}/`, formData);
+      const res = await api.patch(`/users/${user.id}/`, formData);
 
       // Refresh the shared auth state (sidebar, user menu, profile page)
       login(res.data.user);

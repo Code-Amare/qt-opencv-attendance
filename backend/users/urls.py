@@ -14,10 +14,12 @@ from .views import (
     ResetPasswordView,
     VerifyUserView,
     RegisterView,
+    EditProfileView,
 )
 
 urlpatterns = [
     # Session
+    path("<int:user_id>/", EditProfileView.as_view()),
     path("me/", MeView.as_view(), name="me"),
     path("token/refresh/", RefreshTokenView.as_view(), name="token-refresh"),
     path("logout/", LogoutView.as_view(), name="logout"),

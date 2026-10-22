@@ -26,9 +26,6 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-# ---------------------------------------------------------------- helpers
-
-
 def error(message, code=status.HTTP_400_BAD_REQUEST):
     return Response({"error": message}, status=code)
 
@@ -98,9 +95,6 @@ def tenant_payload(tenant_id):
     ).data
 
 
-# ---------------------------------------------------------------- overview
-
-
 class ConsoleStatsView(APIView):
     """Platform-wide numbers only. No names, no sessions, no attendance rows."""
 
@@ -137,10 +131,6 @@ class ConsoleStatsView(APIView):
                 "busiest_tenants": TenantSerializer(busiest, many=True).data,
             }
         )
-
-
-# ---------------------------------------------------------------- tenants
-
 
 class TenantListCreateView(APIView):
     permission_classes = [IsAdminUser]
@@ -202,7 +192,6 @@ class TenantListCreateView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-
 
 class TenantDetailView(APIView):
     permission_classes = [IsAdminUser]
@@ -280,9 +269,7 @@ class TenantDetailView(APIView):
 
         return Response({"detail": "Tenant deleted"})
 
-
 class TenantAdminCreateView(APIView):
-    """Add another admin to a tenant (for example when the first one is locked out)."""
 
     permission_classes = [IsAdminUser]
 

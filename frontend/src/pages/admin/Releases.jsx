@@ -70,11 +70,16 @@ export default function Releases() {
       )}
 
       <section className="border border-white/10 bg-background-surface">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <span className="text-sm font-medium">Desktop releases</span>
+        <div className="flex h-12 items-center justify-between border-b border-white/10 px-4">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">Desktop releases</span>
+            <span className="text-xs text-foreground-subtle">
+              {releases.length} {releases.length === 1 ? "release" : "releases"}
+            </span>
+          </div>
           <Link
             to="/admin/releases/new"
-            className="bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
+            className="rounded-sm bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover"
           >
             New release
           </Link>
@@ -88,10 +93,16 @@ export default function Releases() {
               <thead>
                 <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-foreground-subtle">
                   <th className="px-4 py-2.5 font-medium">Version</th>
-                  <th className="px-4 py-2.5 font-medium">Created</th>
-                  <th className="px-4 py-2.5 font-medium">Downloads</th>
-                  <th className="px-4 py-2.5 font-medium">Status</th>
-                  <th className="px-4 py-2.5 font-medium">Published</th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Created
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Downloads
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium">Status</th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Published
+                  </th>
                   <th className="px-4 py-2.5 text-right font-medium">
                     Actions
                   </th>
@@ -111,14 +122,14 @@ export default function Releases() {
                         v{r.version}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-foreground-muted">
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
                       {new Date(r.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-4 py-3 tabular-nums">
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
                       {r.assets?.length ?? 0}
                     </td>
                     <td
-                      className={`px-4 py-3 ${
+                      className={`px-4 py-3 text-right ${
                         r.is_published
                           ? "text-success"
                           : "text-foreground-subtle"
@@ -126,31 +137,33 @@ export default function Releases() {
                     >
                       {r.is_published ? "Published" : "Draft"}
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-foreground-muted">
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
                       {r.published_at
-                        ? new Date(r.published_at).toLocaleString()
+                        ? new Date(r.published_at).toLocaleDateString()
                         : "—"}
                     </td>
-                    <td className="space-x-3 px-4 py-3 text-right">
-                      <button
-                        onClick={() => togglePublish(r)}
-                        disabled={busyId === r.id}
-                        className="cursor-pointer text-xs text-primary hover:underline disabled:opacity-50"
-                      >
-                        {r.is_published ? "Unpublish" : "Publish"}
-                      </button>
-                      <Link
-                        to={`/admin/releases/${r.id}`}
-                        className="text-xs text-foreground-muted hover:text-foreground"
-                      >
-                        Edit
-                      </Link>
-                      <button
-                        onClick={() => setToDelete(r)}
-                        className="cursor-pointer text-xs text-danger hover:underline"
-                      >
-                        Delete
-                      </button>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-4">
+                        <button
+                          onClick={() => togglePublish(r)}
+                          disabled={busyId === r.id}
+                          className="cursor-pointer text-xs text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {r.is_published ? "Unpublish" : "Publish"}
+                        </button>
+                        <Link
+                          to={`/admin/releases/${r.id}`}
+                          className="text-xs text-foreground-muted hover:text-foreground"
+                        >
+                          Edit
+                        </Link>
+                        <button
+                          onClick={() => setToDelete(r)}
+                          className="cursor-pointer text-xs text-danger hover:underline"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

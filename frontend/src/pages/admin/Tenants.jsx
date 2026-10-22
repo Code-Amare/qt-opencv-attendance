@@ -1,86 +1,73 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Alert from "../../components/Alert";
-import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
-import { usePageTitle } from "../../context/PageTitleContext";
+import { useUpdatePageTitle } from "../../context/PageTitleContext";
+import { updateTitle } from "../../context/DashboardTitleContext";
 
-const inputClass =
-  "rounded-sm border border-white/10 bg-background-elevated px-3 py-2 text-sm " +
+const fieldClass =
+  "rounded-sm border border-white/10 bg-background-elevated px-3 py-2.5 text-sm " +
   "placeholder:text-foreground-subtle focus:border-primary-hover focus:outline-none";
 
-export default function Users() {
+export default function Tenants() {
   const navigate = useNavigate();
-  const { updatePageTitle } = usePageTitle();
-  const [users, setUsers] = useState([]);
+  const [tenants, setTenants] = useState([]);
   const [search, setSearch] = useState("");
-  const [section, setSection] = useState("");
+  const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [userToDelete, setUserToDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
+
+  updateTitle("Tenants");
+  useUpdatePageTitle("Tenants");
 
   useEffect(() => {
-    updatePageTitle("Users");
-  }, []);
+    let cancelled = false;
 
-  // reload when the filters change (debounced so we don't fire on every keystroke)
-  useEffect(() => {
     const timer = setTimeout(async () => {
       setLoading(true);
-      setError("");
       try {
-        const res = await api.get("/admin/users/", {
-          params: { search, section },
+        const res = await api.get("/admin/tenants/", {
+          params: { search: search.trim(), status },
         });
-        setUsers(res.data.users);
+        if (!cancelled) {
+          setTenants(res.data.tenants ?? []);
+          setError("");
+        }
       } catch (err) {
-        // the backend returns 404 when no user matches
-        if (err.response?.status === 404) {
-          setUsers([]);
-        } else {
-          setError(getErrorMessage(err, "Failed to load users."));
+        if (!cancelled) {
+          setError(getErrorMessage(err, "Failed to load tenants."));
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }, 300);
 
-    return () => clearTimeout(timer);
-  }, [search, section]);
-
-  const onConfirmDelete = async () => {
-    setDeleting(true);
-    setError("");
-    try {
-      await api.delete(`/admin/users/${userToDelete.id}/`);
-      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id));
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to delete the user."));
-    } finally {
-      setDeleting(false);
-      setUserToDelete(null);
-    }
-  };
-
-  const deleteName = userToDelete
-    ? `${userToDelete.first_name} ${userToDelete.last_name}`.trim() ||
-      userToDelete.email
-    : "";
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [search, status]);
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <div className="mt-2 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
-          <Link
-            to="/admin/users/new"
-            className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-          >
-            Add user
-          </Link>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name or slug"
+          className={fieldClass}
+        />
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className={fieldClass}
+        >
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="suspended">Suspended</option>
+        </select>
       </div>
 
       {error && (
@@ -89,91 +76,58 @@ export default function Users() {
         </Alert>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <input
-          type="text"
-          placeholder="Search name or email"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={`${inputClass} w-full sm:w-72`}
-        />
-        <input
-          type="text"
-          placeholder="Section"
-          value={section}
-          onChange={(e) => setSection(e.target.value)}
-          className={`${inputClass} w-full sm:w-40`}
-        />
-      </div>
-
-      {/* Table */}
       <section className="border border-white/10 bg-background-surface">
+        <div className="flex h-12 items-center justify-between border-b border-white/10 px-4">
+          <span className="text-sm font-medium">All tenants</span>
+          <span className="text-xs text-foreground-subtle">
+            {tenants.length} {tenants.length === 1 ? "tenant" : "tenants"}
+          </span>
+        </div>
+
         {loading ? (
           <p className="p-4 text-sm text-foreground-muted">Loading…</p>
-        ) : users.length === 0 ? (
-          <p className="p-4 text-sm text-foreground-muted">No users found.</p>
+        ) : tenants.length === 0 ? (
+          <p className="p-4 text-sm text-foreground-muted">No tenants found.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-foreground-subtle">
+                <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-foreground-subtle">
                   <th className="px-4 py-2.5 font-medium">Name</th>
-                  <th className="px-4 py-2.5 font-medium">Email</th>
-                  <th className="px-4 py-2.5 font-medium">Section</th>
-                  <th className="px-4 py-2.5 font-medium">Status</th>
                   <th className="px-4 py-2.5 text-right font-medium">
-                    Actions
+                    Sessions
                   </th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Created
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
+                {tenants.map((t) => (
                   <tr
-                    key={u.id}
-                    onClick={() => navigate(`/admin/users/${u.id}`)}
+                    key={t.id}
+                    onClick={() => navigate(`/admin/tenants/${t.id}`)}
                     className="cursor-pointer border-b border-white/5 last:border-0 hover:bg-background-elevated"
                   >
                     <td className="px-4 py-3">
-                      <Link
-                        to={`/admin/users/${u.id}`}
-                        className="hover:underline"
-                      >
-                        {`${u.first_name} ${u.last_name}`.trim() || "—"}
-                      </Link>
+                      <div>{t.name}</div>
+                      <div className="text-xs text-foreground-subtle">
+                        {t.slug}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-foreground-muted">
-                      {u.email}
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
+                      {t.session_count ?? 0}
                     </td>
-                    <td className="px-4 py-3 text-foreground-muted">
-                      {u.section || "—"}
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
+                      {new Date(t.created_at).toLocaleDateString()}
                     </td>
                     <td
-                      className={`px-4 py-3 ${
-                        u.is_active ? "text-success" : "text-foreground-subtle"
+                      className={`px-4 py-3 text-right ${
+                        t.is_active ? "text-success" : "text-danger"
                       }`}
                     >
-                      {u.is_active ? "Active" : "Inactive"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-4">
-                        <Link
-                          to={`/admin/users/${u.id}/edit`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-foreground-muted hover:text-foreground"
-                        >
-                          Edit
-                        </Link>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setUserToDelete(u);
-                          }}
-                          className="cursor-pointer text-danger hover:underline"
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      {t.is_active ? "Active" : "Suspended"}
                     </td>
                   </tr>
                 ))}
@@ -182,16 +136,6 @@ export default function Users() {
           </div>
         )}
       </section>
-
-      <ConfirmModal
-        open={!!userToDelete}
-        title="Delete user"
-        message={`Delete ${deleteName}? This cannot be undone.`}
-        confirmText="Delete"
-        loading={deleting}
-        onConfirm={onConfirmDelete}
-        onCancel={() => setUserToDelete(null)}
-      />
     </div>
   );
 }

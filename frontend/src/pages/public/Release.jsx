@@ -12,7 +12,6 @@ import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
 import { usePageTitle } from "../../context/PageTitleContext";
 
-// Adjust to match your Django urls.py (maps to LatestReleaseView)
 const LATEST_RELEASE_URL = "/releases/latest/";
 
 const OS_LIST = [
@@ -31,7 +30,6 @@ const OS_LIST = [
   { key: "linux", label: "Linux", Icon: FaLinux, aliases: ["linux"] },
 ];
 
-// Edit these to match what your build really needs
 const GPU_REQUIREMENTS = [
   ["Graphics card", "An NVIDIA GPU with CUDA support."],
   ["Driver", "A recent NVIDIA driver installed from nvidia.com."],
@@ -72,7 +70,6 @@ const formatDate = (value) => {
       });
 };
 
-// Assumes file_size is stored in bytes
 const formatSize = (bytes) => {
   const n = Number(bytes);
   if (!n || n < 0) return "";
@@ -105,7 +102,6 @@ function GpuSection() {
       </p>
 
       <div className="mt-10 grid gap-10 lg:grid-cols-2">
-        {/* Requirements */}
         <div>
           <h3 className="text-sm font-medium uppercase tracking-widest text-foreground-subtle">
             GPU requirements
@@ -128,7 +124,6 @@ function GpuSection() {
           </p>
         </div>
 
-        {/* Fallback */}
         <div>
           <h3 className="text-sm font-medium uppercase tracking-widest text-foreground-subtle">
             Automatic CPU fallback
@@ -184,7 +179,6 @@ export default function Release() {
         if (!cancelled) setRelease(res.data);
       } catch (err) {
         if (cancelled) return;
-        // 404 just means nothing is published yet: every OS shows muted
         if (err?.response?.status !== 404) {
           setError(getErrorMessage(err, "Unable to load the latest release."));
         }
@@ -199,7 +193,6 @@ export default function Release() {
     };
   }, []);
 
-  // { windows: [asset, ...], mac: [...], linux: [...] }
   const assetsByOs = useMemo(() => {
     const groups = {};
     (release?.assets || []).forEach((asset) => {
@@ -210,24 +203,30 @@ export default function Release() {
   }, [release]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      {/* Nav */}
-      <header className="sticky top-0 z-10 border-b border-white/5 bg-background">
+    <div className="flex min-h-screen flex-col bg-background pt-14 text-foreground">
+      <header className="fixed inset-x-0 top-0 z-10 border-b border-white/5 bg-background">
         <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <Link to="/" className="text-base font-semibold tracking-tight">
             FaceCall
           </Link>
-          <Link
-            to="/login"
-            className="rounded-sm bg-primary px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-hover"
-          >
-            Sign in
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/login"
+              className="rounded-sm px-4 py-1.5 text-sm text-foreground-muted hover:text-foreground"
+            >
+              Sign in
+            </Link>
+            <Link
+              to="/register"
+              className="rounded-sm bg-primary px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-hover"
+            >
+              Register
+            </Link>
+          </div>
         </nav>
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-20">
-        {/* Heading */}
         <p className="text-xs font-medium uppercase tracking-widest text-foreground-subtle">
           Desktop app
         </p>
@@ -239,7 +238,6 @@ export default function Release() {
           your own computer.
         </p>
 
-        {/* Version info */}
         {release && (
           <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground-muted">
             <span className="font-medium text-foreground">
@@ -263,7 +261,6 @@ export default function Release() {
           </div>
         )}
 
-        {/* OS cards */}
         <div className="mt-10 grid border-l border-t border-white/10 sm:grid-cols-3">
           {OS_LIST.map(({ key, label, Icon }) => {
             const assets = assetsByOs[key] || [];
@@ -330,10 +327,8 @@ export default function Release() {
           })}
         </div>
 
-        {/* GPU support */}
         <GpuSection />
 
-        {/* Release notes */}
         {release?.release_notes && (
           <section className="mt-16 max-w-2xl">
             <h2 className="text-xl font-semibold tracking-tight">What's new</h2>
@@ -344,7 +339,6 @@ export default function Release() {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-white/5 px-6 py-4 text-xs text-foreground-subtle">
         <Link to="/privacy" className="hover:text-foreground-muted">
           Privacy

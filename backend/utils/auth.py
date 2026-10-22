@@ -39,3 +39,10 @@ class IsTenantAdmin(BasePermission):
             and u.tenant.is_active
         )
 
+
+class IsSuperOrTenantAdmin(BasePermission):
+    message = "Super or Tenant admin access required"
+
+    def has_permission(self, request, view):
+        u = request.user
+        return bool(u and u.is_authenticated and (u.is_tenant_admin or u.is_staff))

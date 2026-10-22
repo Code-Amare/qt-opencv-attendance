@@ -1,5 +1,6 @@
 import logging
 import secrets
+import cloudinary.uploader
 from django.utils.text import slugify
 import requests as http_requests
 from axes.utils import reset
@@ -10,7 +11,7 @@ from django.core.validators import validate_email
 from django.db import transaction
 from django.middleware.csrf import get_token
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
@@ -22,9 +23,11 @@ from utils.emails import (
     send_login_link_email,
     send_verification_code_email,
 )
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from .models import EmailLoginCode, EmailLoginLink, ForgotPasswordRequest
-from .serializers import UserSerializer, RegisterSerializer
+from .serializers import UserSerializer, RegisterSerializer, ProfileUpdateSerializer
 from django.db import IntegrityError, transaction
+from utils.auth import IsSuperOrTenantAdmin
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +35,10 @@ User = get_user_model()
 
 ACCESS_MAX_AGE = 60 * 15
 REFRESH_MAX_AGE = 60 * 60 * 24 * 7
-
+PICTURE_FOLDER = "ai/opencv-attendance/profile_picture"
 COOKIE_SAMESITE = "Lax" if settings.DEBUG else "None"
+ALLOWED_PICTURE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_PICTURE_BYTES = 5 * 1024 * 1024
 
 
 def set_cookie(response, key, value, max_age=None, httponly=True):
@@ -611,4 +616,118 @@ class RegisterView(APIView):
                 "tenant": {"name": tenant.name, "slug": tenant.slug},
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class EditProfileView(APIView):
+    permission_classes = [IsSuperOrTenantAdmin]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def patch(self, request, user_id):
+        user = User.objects.filter(id=user_id, tenant=request.user.tenant).first()
+
+        if not user:
+            return Response(
+                {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ProfileUpdateSerializer(user, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(
+                {"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        picture = request.FILES.get("profile_picture")
+        remove_picture = str(
+            request.data.get("remove_profile_picture", "")
+        ).strip().lower() in ("true", "1")
+
+        if picture:
+            if picture.content_type not in ALLOWED_PICTURE_TYPES:
+                return Response(
+                    {"errors": {"profile_picture": ["Use a JPEG, PNG or WebP image."]}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if picture.size > MAX_PICTURE_BYTES:
+                return Response(
+                    {
+                        "errors": {
+                            "profile_picture": ["The image must be 5 MB or smaller."]
+                        }
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        changed = {
+            field: value
+            for field, value in serializer.validated_data.items()
+            if (getattr(user, field) or None) != (value or None)
+        }
+
+        if not changed and not picture and not remove_picture:
+            return Response(
+                {"is_no_change": True, "errors": {}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_public_id = user.profile_picture.public_id if user.profile_picture else None
+        new_public_id = None
+
+        if picture:
+            try:
+                result = cloudinary.uploader.upload(
+                    picture,
+                    folder=PICTURE_FOLDER,
+                    resource_type="image",
+                    transformation=[
+                        {
+                            "width": 512,
+                            "height": 512,
+                            "crop": "fill",
+                            "gravity": "face",
+                        }
+                    ],
+                )
+            except Exception:
+                logger.exception("Profile picture upload failed | user=%s", user.pk)
+                return Response(
+                    {"error": "Unable to upload the picture. Please try again."},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+            new_public_id = result["public_id"]
+            changed["profile_picture"] = (
+                f"image/upload/v{result['version']}/{new_public_id}.{result['format']}"
+            )
+        elif remove_picture:
+            changed["profile_picture"] = None
+
+        for field, value in changed.items():
+            setattr(user, field, value)
+
+        try:
+            user.save(update_fields=list(changed))
+        except Exception:
+            if new_public_id:
+                try:
+                    cloudinary.uploader.destroy(new_public_id, invalidate=True)
+                except Exception:
+                    logger.exception("Orphan cleanup failed | id=%s", new_public_id)
+            raise
+
+        if "profile_picture" in changed:
+            user.refresh_from_db(fields=["profile_picture"])
+
+        if "profile_picture" in changed and old_public_id != new_public_id:
+            if old_public_id:
+                try:
+                    cloudinary.uploader.destroy(old_public_id, invalidate=True)
+                except Exception:
+                    logger.exception(
+                        "Old picture cleanup failed | id=%s", old_public_id
+                    )
+
+        return Response(
+            {"detail": "Profile updated", "user": UserSerializer(user).data},
+            status=status.HTTP_200_OK,
         )

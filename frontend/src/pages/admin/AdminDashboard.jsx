@@ -1,23 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Alert from "../../components/Alert";
-import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
-import { useAuth } from "../../context/AuthContext";
 import { useUpdatePageTitle } from "../../context/PageTitleContext";
 import { updateTitle } from "../../context/DashboardTitleContext";
 
-const sessionStyle = {
-  active: "text-success",
-  completed: "text-info",
-  cancelled: "text-danger",
-};
-
 const segments = [
-  ["present", "Present", "bg-success", "stroke-success"],
-  ["late", "Late", "bg-warning", "stroke-warning"],
-  ["absent", "Absent", "bg-danger", "stroke-danger"],
+  ["present", "Present", "bg-success", "stroke-success", "text-success"],
+  ["late", "Late", "bg-warning", "stroke-warning", "text-warning"],
+  ["absent", "Absent", "bg-danger", "stroke-danger", "text-danger"],
 ];
 
 function Donut({ counts, total }) {
@@ -26,7 +18,7 @@ function Donut({ counts, total }) {
   let offset = 0;
 
   return (
-    <div className="relative mx-auto h-44 w-44">
+    <div className="relative mx-auto h-44 w-44 shrink-0">
       <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
         <circle
           cx="50"
@@ -66,17 +58,73 @@ function Donut({ counts, total }) {
   );
 }
 
-export default function Dashboard() {
+function TenantTable({ title, tenants, onOpen, showViewAll }) {
+  return (
+    <section className="flex h-full flex-col border border-white/10 bg-background-surface">
+      <div className="flex h-12 items-center justify-between border-b border-white/10 px-4">
+        <span className="text-sm font-medium">{title}</span>
+        {showViewAll && (
+          <Link
+            to="/admin/tenants"
+            className="text-xs text-foreground-subtle hover:text-foreground"
+          >
+            View all
+          </Link>
+        )}
+      </div>
+      {tenants.length === 0 ? (
+        <p className="p-4 text-sm text-foreground-muted">No tenants yet.</p>
+      ) : (
+        <div className="flex-1 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-foreground-subtle">
+                <th className="px-4 py-2.5 font-medium">Name</th>
+                <th className="px-4 py-2.5 text-right font-medium">Sessions</th>
+                <th className="px-4 py-2.5 text-right font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tenants.map((t) => (
+                <tr
+                  key={t.id}
+                  onClick={() => onOpen(t.id)}
+                  className="cursor-pointer border-b border-white/5 last:border-0 hover:bg-background-elevated"
+                >
+                  <td className="px-4 py-3">
+                    <div>{t.name}</div>
+                    <div className="text-xs text-foreground-subtle">
+                      {t.slug}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
+                    {t.session_count ?? 0}
+                  </td>
+                  <td
+                    className={`px-4 py-3 text-right ${
+                      t.is_active ? "text-success" : "text-danger"
+                    }`}
+                  >
+                    {t.is_active ? "Active" : "Suspended"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default function SuperAdminDashboard() {
   const navigate = useNavigate();
-  const { logout: authLogout } = useAuth();
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [confirmLogout, setConfirmLogout] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
 
   updateTitle("Dashboard");
-  useUpdatePageTitle("Admin Dashboard");
+  useUpdatePageTitle("Super Admin Dashboard");
 
   useEffect(() => {
     const load = async () => {
@@ -93,12 +141,6 @@ export default function Dashboard() {
     load();
   }, []);
 
-  const onConfirmLogout = async () => {
-    setLoggingOut(true);
-    await authLogout(); // calls the API and resets the user state
-    navigate("/login", { replace: true });
-  };
-
   if (loading) return <p className="p-6 text-foreground-muted">Loading…</p>;
 
   if (error || !stats) {
@@ -111,11 +153,23 @@ export default function Dashboard() {
     );
   }
 
+  const tenants = stats.tenants ?? {};
+  const users = stats.users ?? {};
+  const members = users.members ?? 0;
+  const withFace = users.with_face ?? 0;
+
   const cards = [
-    ["Total users", stats.total_users],
-    ["Active users", stats.active_users],
-    ["Face enrolled", `${stats.users_with_face} / ${stats.total_users}`],
-    ["Sessions", stats.total_sessions],
+    ["Tenants", tenants.total ?? 0],
+    ["Active tenants", tenants.active ?? 0],
+    ["Suspended tenants", tenants.suspended ?? 0],
+    ["Sessions", stats.sessions ?? 0],
+    ["Members", members],
+    ["Tenant admins", users.admins ?? 0],
+    ["Face enrolled", `${withFace} / ${members}`],
+    [
+      "Enrollment rate",
+      `${members > 0 ? Math.round((withFace / members) * 100) : 0}%`,
+    ],
   ];
 
   const byStatus = stats.attendance_by_status ?? {};
@@ -126,12 +180,10 @@ export default function Dashboard() {
   };
   const total = counts.present + counts.late + counts.absent;
 
-  const recent = stats.recent_sessions ?? []; // newest first
-  const chartData = [...recent].reverse(); // oldest -> newest for the chart
+  const openTenant = (id) => navigate(`/admin/tenants/${id}`);
 
   return (
     <div className="space-y-8 p-6">
-      {/* Stat cards */}
       <section className="grid border-l border-t border-white/10 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map(([label, value]) => (
           <div
@@ -144,169 +196,51 @@ export default function Dashboard() {
         ))}
       </section>
 
-      <div className="grid gap-8 lg:grid-cols-3">
-        {/* Overall attendance donut */}
-        <section className="border border-white/10 bg-background-surface">
-          <div className="border-b border-white/10 px-4 py-3 text-sm font-medium">
-            Overall attendance
-          </div>
-          <div className="space-y-5 p-6">
-            <Donut counts={counts} total={total} />
-            <ul className="space-y-2 text-sm">
-              {segments.map(([key, label, bg]) => (
-                <li key={key} className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <span className={`h-2.5 w-2.5 ${bg}`} />
-                    {label}
-                  </span>
-                  <span className="tabular-nums text-foreground-muted">
-                    {counts[key]}
-                    {total > 0 &&
-                      ` · ${Math.round((counts[key] / total) * 100)}%`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {total === 0 && (
-              <p className="text-center text-sm text-foreground-muted">
-                No attendance recorded yet.
-              </p>
-            )}
-          </div>
-        </section>
-
-        {/* Per-session chart */}
-        <section className="border border-white/10 bg-background-surface lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-            <span className="text-sm font-medium">Attendance by session</span>
-            <span className="text-xs text-foreground-subtle">
-              Last {chartData.length} sessions
-            </span>
-          </div>
-          {chartData.length === 0 ? (
-            <p className="p-4 text-sm text-foreground-muted">
-              No sessions yet.
-            </p>
-          ) : (
-            <div className="p-4">
-              <div className="flex h-56 items-end gap-3">
-                {chartData.map((s) => {
-                  const t = s.present + s.late + s.absent;
-                  return (
-                    <Link
-                      key={s.id}
-                      to={`/admin/sessions/${s.id}`}
-                      title={`${s.name}: ${s.present} present, ${s.late} late, ${s.absent} absent`}
-                      className="group flex h-full flex-1 flex-col justify-end"
-                    >
-                      <div className="mb-1 text-center text-xs tabular-nums text-foreground-subtle">
-                        {t}
-                      </div>
-                      <div className="flex min-h-1 flex-1 flex-col-reverse bg-background-subtle opacity-90 group-hover:opacity-100">
-                        {t > 0 &&
-                          segments.map(([key, , bg]) => (
-                            <div
-                              key={key}
-                              className={bg}
-                              style={{ height: `${(s[key] / t) * 100}%` }}
-                            />
-                          ))}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-              <div className="mt-2 flex gap-3">
-                {chartData.map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex-1 truncate text-center text-xs text-foreground-muted"
-                    title={s.name}
-                  >
-                    {s.name}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-      </div>
-
-      {/* Recent sessions */}
       <section className="border border-white/10 bg-background-surface">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <span className="text-sm font-medium">Recent sessions</span>
-          <Link
-            to="/admin/sessions"
-            className="text-xs text-foreground-subtle hover:text-foreground"
-          >
-            View all
-          </Link>
+        <div className="flex h-12 items-center border-b border-white/10 px-4 text-sm font-medium">
+          Attendance across all tenants
         </div>
-        {recent.length === 0 ? (
-          <p className="p-4 text-sm text-foreground-muted">No sessions yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-foreground-subtle">
-                  <th className="px-4 py-2.5 font-medium">Name</th>
-                  <th className="px-4 py-2.5 font-medium">Started</th>
-                  <th className="px-4 py-2.5 font-medium">Present</th>
-                  <th className="px-4 py-2.5 font-medium">Late</th>
-                  <th className="px-4 py-2.5 font-medium">Absent</th>
-                  <th className="px-4 py-2.5 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.slice(0, 5).map((s) => (
-                  <tr
-                    key={s.id}
-                    onClick={() => navigate(`/admin/sessions/${s.id}`)}
-                    className="cursor-pointer border-b border-white/5 last:border-0 hover:bg-background-elevated"
-                  >
-                    <td className="px-4 py-3">
-                      <Link
-                        to={`/admin/sessions/${s.id}`}
-                        className="hover:underline"
-                      >
-                        {s.name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-foreground-muted">
-                      {new Date(s.started_at).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-success">
-                      {s.present}
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-warning">
-                      {s.late}
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-danger">
-                      {s.absent}
-                    </td>
-                    <td
-                      className={`px-4 py-3 capitalize ${sessionStyle[s.status]}`}
-                    >
-                      {s.status}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="grid items-center gap-8 p-6 md:grid-cols-[auto_1fr]">
+          <Donut counts={counts} total={total} />
+          <div className="grid gap-4 sm:grid-cols-3">
+            {segments.map(([key, label, bg, , text]) => (
+              <div
+                key={key}
+                className="border border-white/10 bg-background-elevated p-4"
+              >
+                <div className="flex items-center gap-2 text-sm text-foreground-muted">
+                  <span className={`h-2.5 w-2.5 ${bg}`} />
+                  {label}
+                </div>
+                <div
+                  className={`mt-2 text-3xl font-semibold tabular-nums ${text}`}
+                >
+                  {counts[key]}
+                </div>
+                <div className="mt-1 text-xs text-foreground-subtle">
+                  {total > 0
+                    ? `${Math.round((counts[key] / total) * 100)}% of records`
+                    : "No records"}
+                </div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
       </section>
 
-      <ConfirmModal
-        open={confirmLogout}
-        title="Log out"
-        message="Are you sure you want to log out?"
-        confirmText="Log out"
-        loading={loggingOut}
-        onConfirm={onConfirmLogout}
-        onCancel={() => setConfirmLogout(false)}
-      />
+      <div className="grid items-stretch gap-8 lg:grid-cols-2">
+        <TenantTable
+          title="Newest tenants"
+          tenants={stats.newest_tenants ?? []}
+          onOpen={openTenant}
+          showViewAll
+        />
+        <TenantTable
+          title="Busiest tenants"
+          tenants={stats.busiest_tenants ?? []}
+          onOpen={openTenant}
+        />
+      </div>
     </div>
   );
 }

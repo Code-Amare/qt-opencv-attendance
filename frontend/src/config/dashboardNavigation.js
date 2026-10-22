@@ -1,11 +1,9 @@
 import {
   FiHome,
-  FiUsers,
+  FiBriefcase,
   FiList,
-  FiUserPlus,
-  FiCalendar,
-  FiDownload,
   FiPlus,
+  FiDownload,
   FiUser,
   FiEdit,
   FiSettings,
@@ -17,21 +15,10 @@ export const PATHS = {
   profileEdit: "/admin/profile/edit",
 };
 
-// Add `roles: ["admin"]` to any item or child to limit it by user.role.
-// Items without `roles` are visible to everyone.
 const dashboardNavigation = [
   { name: "Dashboard", path: PATHS.home, icon: FiHome },
 
-  {
-    name: "Users",
-    icon: FiUsers,
-    children: [
-      { name: "All Users", path: "/admin/users", icon: FiList },
-      { name: "Add User", path: "/admin/users/new", icon: FiUserPlus },
-    ],
-  },
-
-  { name: "Sessions", path: "/admin/sessions", icon: FiCalendar },
+  { name: "Tenants", path: "/admin/tenants", icon: FiBriefcase },
 
   {
     name: "Releases",
@@ -56,14 +43,14 @@ const dashboardNavigation = [
 
 export default dashboardNavigation;
 
-// Title for the top bar: the longest nav path that matches the current URL.
 export function getPageTitle(pathname) {
   const flat = dashboardNavigation.flatMap((item) =>
     item.children ? item.children : [item],
   );
   let best = null;
   for (const item of flat) {
-    const match = pathname === item.path || pathname.startsWith(item.path + "/");
+    const match =
+      pathname === item.path || pathname.startsWith(item.path + "/");
     if (match && (!best || item.path.length > best.path.length)) best = item;
   }
   return best?.name ?? "Dashboard";
