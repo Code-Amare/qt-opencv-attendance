@@ -1,5 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Navigate,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import {
   FiChevronDown,
   FiChevronLeft,
@@ -13,16 +26,28 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useSiteInfo } from "../context/SiteInfoContext";
 import ThemeToggler from "./ThemeToggler";
-import dashboardNavigation, {
-  PATHS,
-  getPageTitle,
-} from "../config/dashboardNavigation";
-import { DashboardTitleProvider } from "../context/DashboardTitleContext";
-import { useDashboardTitle } from "../context/DashboardTitleContext";
+import adminNavigation, {
+  PATHS as ADMIN_PATHS,
+  getPageTitle as getAdminPageTitle,
+} from "../config/adminDashboardNavigation";
+import {
+  tenantDashboardNavigation,
+  getTenantPaths,
+  getTenantPageTitle,
+} from "../config/tenantDashboardNavigation";
+import {
+  DashboardTitleProvider,
+  useDashboardTitle,
+} from "../context/DashboardTitleContext";
 
 const STORAGE_KEY = "dashboard-sidebar-collapsed";
 
-/* ------------------------------------------------------------ helpers */
+const DashboardConfigContext = createContext(null);
+
+function useDashboardConfig() {
+  return useContext(DashboardConfigContext);
+}
+
 function useMediaQuery(query) {
   const [matches, setMatches] = useState(
     () => typeof window !== "undefined" && window.matchMedia(query).matches,
@@ -39,7 +64,6 @@ function useMediaQuery(query) {
   return matches;
 }
 
-// Reads both camelCase and snake_case user fields.
 function getUserDisplay(user) {
   const firstName = user?.firstName ?? user?.first_name ?? "";
   const lastName = user?.lastName ?? user?.last_name ?? "";
@@ -70,7 +94,6 @@ function readCollapsed() {
   }
 }
 
-/* ------------------------------------------------------------- avatar */
 function UserAvatar({ user, className = "h-8 w-8" }) {
   const { fullName, picture, initial } = getUserDisplay(user);
 
@@ -91,15 +114,15 @@ function UserAvatar({ user, className = "h-8 w-8" }) {
   );
 }
 
-/* ---------------------------------------------------------- user card */
 function DashboardUserCard({ user, collapsed, onNavigate }) {
+  const { paths } = useDashboardConfig();
   if (!user) return null;
   const { fullName, email } = getUserDisplay(user);
 
   if (collapsed) {
     return (
       <NavLink
-        to={PATHS.profile}
+        to={paths.profile}
         onClick={onNavigate}
         title={fullName}
         className="flex flex-shrink-0 justify-center border-t border-border p-2"
@@ -111,7 +134,7 @@ function DashboardUserCard({ user, collapsed, onNavigate }) {
 
   return (
     <NavLink
-      to={PATHS.profile}
+      to={paths.profile}
       onClick={onNavigate}
       className="block flex-shrink-0 border-t border-border p-4 transition-colors hover:bg-surface-hover"
     >
@@ -128,9 +151,9 @@ function DashboardUserCard({ user, collapsed, onNavigate }) {
   );
 }
 
-/* ---------------------------------------------------------- user menu */
 function UserMenu() {
   const { user, logout } = useAuth();
+  const { paths } = useDashboardConfig();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
   const navigate = useNavigate();
@@ -151,14 +174,21 @@ function UserMenu() {
     {
       label: "View Profile",
       icon: FiUser,
-      action: () => navigate(PATHS.profile),
+      action: () => navigate(paths.profile),
     },
     {
       label: "Edit Profile",
       icon: FiEdit,
-      action: () => navigate(PATHS.profileEdit),
+      action: () => navigate(paths.profileEdit),
     },
-    { label: "Logout", icon: FiLogOut, action: () => logout?.() },
+    {
+      label: "Logout",
+      icon: FiLogOut,
+      action: async () => {
+        await logout?.();
+        navigate("/login", { replace: true });
+      },
+    },
   ];
 
   return (
@@ -196,10 +226,10 @@ function UserMenu() {
   );
 }
 
-/* ------------------------------------------------------------ top bar */
 function DashboardNav({ setSidebarOpen }) {
   const { pathname } = useLocation();
   const { title } = useDashboardTitle();
+  const { getTitle } = useDashboardConfig();
 
   return (
     <header className="flex h-16 flex-shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4">
@@ -213,7 +243,7 @@ function DashboardNav({ setSidebarOpen }) {
         </button>
 
         <div className="truncate text-lg font-semibold text-foreground cursor-default">
-          {title ?? getPageTitle(pathname)}
+          {title ?? getTitle(pathname)}
         </div>
       </div>
 
@@ -222,14 +252,13 @@ function DashboardNav({ setSidebarOpen }) {
   );
 }
 
-/* ------------------------------------------------------------ sidebar */
 function DashboardSidebar({ open, setOpen }) {
   const { user } = useAuth();
   const { siteInfo } = useSiteInfo();
+  const { navigation, paths, brandName } = useDashboardConfig();
   const { pathname } = useLocation();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
-  // Collapsing only exists on desktop. The mobile drawer is always full width.
   const [isCollapsed, setIsCollapsed] = useState(readCollapsed);
   const collapsed = isCollapsed && isDesktop;
 
@@ -237,13 +266,13 @@ function DashboardSidebar({ open, setOpen }) {
     try {
       localStorage.setItem(STORAGE_KEY, String(isCollapsed));
     } catch {
-      /* storage unavailable: ignore */
+      return;
     }
   }, [isCollapsed]);
 
   const [expandedMenus, setExpandedMenus] = useState(() =>
     Object.fromEntries(
-      dashboardNavigation
+      navigation
         .filter((item) => hasActiveChild(item, pathname))
         .map((item) => [item.name, true]),
     ),
@@ -253,17 +282,16 @@ function DashboardSidebar({ open, setOpen }) {
   const popoverRef = useRef(null);
   const buttonRefs = useRef({});
 
-  // On every route change: close the popover, open the group that is active.
   useEffect(() => {
     setPopoverItem(null);
     setExpandedMenus((prev) => {
       const next = { ...prev };
-      dashboardNavigation.forEach((item) => {
+      navigation.forEach((item) => {
         if (hasActiveChild(item, pathname)) next[item.name] = true;
       });
       return next;
     });
-  }, [pathname]);
+  }, [pathname, navigation]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -294,7 +322,7 @@ function DashboardSidebar({ open, setOpen }) {
     if (open) setOpen(false);
   };
 
-  const visibleItems = dashboardNavigation.filter(
+  const visibleItems = navigation.filter(
     (item) => !item.roles || item.roles.includes(user?.role),
   );
 
@@ -307,8 +335,6 @@ function DashboardSidebar({ open, setOpen }) {
         : "text-foreground hover:bg-surface-hover"
     }
   `;
-
-  const brandName = siteInfo?.siteName || "FaceCall";
 
   return (
     <>
@@ -330,12 +356,11 @@ function DashboardSidebar({ open, setOpen }) {
           lg:relative lg:translate-x-0
         `}
       >
-        {/* Header */}
         <div className="flex h-16 flex-shrink-0 items-center border-b border-border px-4">
           {!collapsed ? (
             <div className="flex min-w-0 flex-1 items-center overflow-hidden">
               <NavLink
-                to={PATHS.home}
+                to={paths.home}
                 className="flex min-w-0 items-center gap-2"
                 onClick={closeSidebar}
               >
@@ -363,7 +388,6 @@ function DashboardSidebar({ open, setOpen }) {
           )}
 
           <div className="flex flex-shrink-0 items-center gap-2">
-            {/* Collapse toggle: desktop only */}
             <button
               className="hidden lg:flex items-center justify-center rounded-md p-1 text-muted-foreground hover:bg-surface-hover cursor-pointer"
               onClick={toggleCollapsed}
@@ -376,7 +400,6 @@ function DashboardSidebar({ open, setOpen }) {
               )}
             </button>
 
-            {/* Close drawer: mobile only */}
             <button
               className="lg:hidden rounded-md p-1 text-muted-foreground hover:bg-surface-hover cursor-pointer"
               onClick={closeSidebar}
@@ -387,7 +410,6 @@ function DashboardSidebar({ open, setOpen }) {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
           {visibleItems.map((item) => {
             if (item.children) {
@@ -436,7 +458,6 @@ function DashboardSidebar({ open, setOpen }) {
                     )}
                   </button>
 
-                  {/* Collapsed: floating submenu */}
                   {collapsed && isPopoverOpen && (
                     <div
                       ref={popoverRef}
@@ -470,7 +491,6 @@ function DashboardSidebar({ open, setOpen }) {
                     </div>
                   )}
 
-                  {/* Expanded: inline submenu */}
                   {!collapsed && isExpanded && (
                     <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
                       {visibleChildren.map((child) => (
@@ -499,7 +519,7 @@ function DashboardSidebar({ open, setOpen }) {
               <NavLink
                 key={item.name}
                 to={item.path}
-                end={item.path === PATHS.home}
+                end={item.path === paths.home}
                 onClick={closeSidebar}
                 className={({ isActive }) =>
                   linkClass(isActive, collapsed ? "justify-center px-0" : "")
@@ -517,7 +537,6 @@ function DashboardSidebar({ open, setOpen }) {
           })}
         </nav>
 
-        {/* Theme */}
         <div className="flex-shrink-0 border-t border-border px-4 py-3">
           <div
             className={`flex items-center ${
@@ -543,23 +562,53 @@ function DashboardSidebar({ open, setOpen }) {
   );
 }
 
-/* ------------------------------------------------------------- layout */
 export default function DashboardLayout() {
+  const { user, tenant } = useAuth();
+  const { siteInfo } = useSiteInfo();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const isStaff = !!user?.isStaff;
+  const slug = tenant?.slug;
+  const tenantName = tenant?.name;
+  const siteName = siteInfo?.siteName;
+
+  const config = useMemo(() => {
+    if (isStaff) {
+      return {
+        navigation: adminNavigation,
+        paths: ADMIN_PATHS,
+        getTitle: getAdminPageTitle,
+        brandName: siteName || "FaceCall",
+      };
+    }
+
+    if (!slug) return null;
+
+    return {
+      navigation: tenantDashboardNavigation(slug),
+      paths: getTenantPaths(slug),
+      getTitle: (pathname) => getTenantPageTitle(pathname, slug),
+      brandName: tenantName || siteName || "FaceCall",
+    };
+  }, [isStaff, slug, tenantName, siteName]);
+
+  if (!config) return <Navigate to="/login" replace />;
+
   return (
-    <DashboardTitleProvider>
-      <div className="h-screen flex overflow-hidden bg-background">
-        <DashboardSidebar open={sidebarOpen} setOpen={setSidebarOpen} />
+    <DashboardConfigContext.Provider value={config}>
+      <DashboardTitleProvider>
+        <div className="h-screen flex overflow-hidden bg-background">
+          <DashboardSidebar open={sidebarOpen} setOpen={setSidebarOpen} />
 
-        <div className="flex-1 flex flex-col min-w-0">
-          <DashboardNav setSidebarOpen={setSidebarOpen} />
+          <div className="flex-1 flex flex-col min-w-0">
+            <DashboardNav setSidebarOpen={setSidebarOpen} />
 
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">
-            <Outlet />
-          </main>
+            <main className="flex-1 overflow-y-auto p-4 md:p-6">
+              <Outlet />
+            </main>
+          </div>
         </div>
-      </div>
-    </DashboardTitleProvider>
+      </DashboardTitleProvider>
+    </DashboardConfigContext.Provider>
   );
 }

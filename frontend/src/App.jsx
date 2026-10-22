@@ -37,23 +37,23 @@ const App = () => {
       <Route path="/release" element={<Release />} />
       <Route path="/login/:code" element={<LoginViaLink />} />
 
-      <Route element={<TenantRoute />}>
-        <Route path="/:slug/dashboard" element={<MemberDashboard />} />
-        <Route path="/:slug/profile" element={<Profile />} />
-        <Route path="/:slug/profile/edit" element={<ProfileEdit />} />
-      </Route>
+      <Route element={<DashboardLayout />}>
+        <Route element={<TenantRoute />}>
+          <Route path="/:slug/dashboard" element={<MemberDashboard />} />
+          <Route path="/:slug/profile" element={<Profile />} />
+          <Route path="/:slug/profile/edit" element={<ProfileEdit />} />
+        </Route>
 
-      <Route element={<TenantRoute adminOnly />}>
-        <Route
-          path="/:slug/admin/dashboard"
-          element={<TenantAdminDashboard />}
-        />
-        <Route path="/:slug/admin/profile" element={<Profile />} />
-        <Route path="/:slug/admin/profile/edit" element={<ProfileEdit />} />
-      </Route>
+        <Route element={<TenantRoute adminOnly />}>
+          <Route
+            path="/:slug/admin/dashboard"
+            element={<TenantAdminDashboard />}
+          />
+          <Route path="/:slug/admin/profile" element={<Profile />} />
+          <Route path="/:slug/admin/profile/edit" element={<ProfileEdit />} />
+        </Route>
 
-      <Route element={<ProtectedRoute roles={["admin"]} />}>
-        <Route element={<DashboardLayout />}>
+        <Route element={<ProtectedRoute roles={["admin"]} />}>
           <Route path="/admin/dashboard" element={<SuperAdminDashboard />} />
 
           <Route path="/admin/tenants" element={<Tenants />} />

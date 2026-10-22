@@ -15,7 +15,7 @@ export const PATHS = {
   profileEdit: "/admin/profile/edit",
 };
 
-const dashboardNavigation = [
+const adminDashboardNavigation = [
   { name: "Dashboard", path: PATHS.home, icon: FiHome },
 
   { name: "Tenants", path: "/admin/tenants", icon: FiBriefcase },
@@ -41,10 +41,10 @@ const dashboardNavigation = [
   { name: "Site Settings", path: "/admin/settings", icon: FiSettings },
 ];
 
-export default dashboardNavigation;
+export default adminDashboardNavigation;
 
 export function getPageTitle(pathname) {
-  const flat = dashboardNavigation.flatMap((item) =>
+  const flat = adminDashboardNavigation.flatMap((item) =>
     item.children ? item.children : [item],
   );
   let best = null;
