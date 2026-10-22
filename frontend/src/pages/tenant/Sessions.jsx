@@ -4,7 +4,10 @@ import Alert from "../../components/Alert";
 import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
-import { usePageTitle } from "../../context/PageTitleContext";
+import { useAuth } from "../../context/AuthContext";
+import { useUpdatePageTitle } from "../../context/PageTitleContext";
+import { updateTitle } from "../../context/DashboardTitleContext";
+import { getTenantPaths } from "../../config/tenantDashboardNavigation";
 
 const fieldClass =
   "w-full rounded-sm border border-white/10 bg-background-elevated px-3 py-2.5 text-sm " +
@@ -20,33 +23,25 @@ const statusStyle = {
 
 const pad = (n) => String(n).padStart(2, "0");
 
-// ISO string -> value for <input type="datetime-local">
 const toLocalInput = (iso) => {
   if (!iso) return "";
   const d = new Date(iso);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-// DRF duration ("00:10:00" or "1 00:10:00") -> minutes
 const toMinutes = (duration) => {
   const m = String(duration ?? "").match(/^(?:(\d+) )?(\d+):(\d+):(\d+)/);
   if (!m) return 10;
   return Number(m[1] ?? 0) * 1440 + Number(m[2]) * 60 + Number(m[3]);
 };
 
-const emptyForm = { name: "", started_at: "", ended_at: "", late_minutes: 10 };
-
-function SessionForm({ session, onClose, onSaved }) {
-  const [form, setForm] = useState(
-    session
-      ? {
-          name: session.name,
-          started_at: toLocalInput(session.started_at),
-          ended_at: toLocalInput(session.ended_at),
-          late_minutes: toMinutes(session.late_time),
-        }
-      : emptyForm,
-  );
+function SessionEditForm({ session, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    name: session.name,
+    started_at: toLocalInput(session.started_at),
+    ended_at: toLocalInput(session.ended_at),
+    late_minutes: toMinutes(session.late_time),
+  });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -76,11 +71,7 @@ function SessionForm({ session, onClose, onSaved }) {
 
     setSaving(true);
     try {
-      if (session) {
-        await api.patch(`/admin/sessions/${session.id}/`, payload);
-      } else {
-        await api.post("/attendance/session/create/", payload);
-      }
+      await api.patch(`/tenant/sessions/${session.id}/`, payload);
       onSaved();
     } catch (err) {
       setError(getErrorMessage(err, "Failed to save the session."));
@@ -101,9 +92,7 @@ function SessionForm({ session, onClose, onSaved }) {
         className="w-full max-w-md space-y-4 border border-white/10 bg-background-surface p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold tracking-tight">
-          {session ? "Edit session" : "New session"}
-        </h2>
+        <h2 className="text-lg font-semibold tracking-tight">Edit session</h2>
 
         {error && (
           <Alert variant="error" title="Error" onClose={() => setError("")}>
@@ -182,7 +171,7 @@ function SessionForm({ session, onClose, onSaved }) {
             disabled={saving}
             className="cursor-pointer rounded-sm bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? "Saving…" : session ? "Save changes" : "Create session"}
+            {saving ? "Saving…" : "Save changes"}
           </button>
         </div>
       </form>
@@ -192,27 +181,26 @@ function SessionForm({ session, onClose, onSaved }) {
 
 export default function Sessions() {
   const navigate = useNavigate();
-  const { updatePageTitle } = usePageTitle();
+  const { tenant } = useAuth();
+  const paths = getTenantPaths(tenant.slug);
+
   const [sessions, setSessions] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState(null); // null = creating
+  const [editing, setEditing] = useState(null);
   const [changingId, setChangingId] = useState(null);
   const [sessionToDelete, setSessionToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    updatePageTitle("Sessions");
-  }, []);
+  updateTitle("Sessions");
+  useUpdatePageTitle("Sessions");
 
   const load = async () => {
     setError("");
     try {
-      const res = await api.get("/admin/sessions/");
-      setSessions(res.data.sessions);
+      const res = await api.get("/attendance/sessions/");
+      setSessions(res.data.sessions ?? res.data.results ?? res.data);
     } catch (err) {
-      // the backend returns 404 when there are no sessions yet
       if (err.response?.status === 404) {
         setSessions([]);
       } else {
@@ -227,18 +215,8 @@ export default function Sessions() {
     load();
   }, []);
 
-  const openCreate = () => {
-    setEditing(null);
-    setFormOpen(true);
-  };
-
-  const openEdit = (s) => {
-    setEditing(s);
-    setFormOpen(true);
-  };
-
   const onSaved = () => {
-    setFormOpen(false);
+    setEditing(null);
     load();
   };
 
@@ -246,11 +224,12 @@ export default function Sessions() {
     setChangingId(session.id);
     setError("");
     try {
-      const res = await api.patch(`/admin/sessions/${session.id}/state/`, {
+      const res = await api.patch(`/tenant/sessions/${session.id}/status/`, {
         status,
       });
+      const updated = res.data.session ?? res.data;
       setSessions((prev) =>
-        prev.map((s) => (s.id === session.id ? res.data.session : s)),
+        prev.map((s) => (s.id === session.id ? { ...s, ...updated } : s)),
       );
     } catch (err) {
       setError(getErrorMessage(err, "Failed to change the session state."));
@@ -263,7 +242,7 @@ export default function Sessions() {
     setDeleting(true);
     setError("");
     try {
-      await api.delete(`/admin/sessions/${sessionToDelete.id}/`);
+      await api.delete(`/tenant/sessions/${sessionToDelete.id}/`);
       setSessions((prev) => prev.filter((s) => s.id !== sessionToDelete.id));
     } catch (err) {
       setError(getErrorMessage(err, "Failed to delete the session."));
@@ -275,18 +254,6 @@ export default function Sessions() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <div className="mt-2 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
-          <button
-            onClick={openCreate}
-            className="cursor-pointer rounded-sm bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-          >
-            New session
-          </button>
-        </div>
-      </div>
-
       {error && (
         <Alert variant="error" title="Error" onClose={() => setError("")}>
           {error}
@@ -294,6 +261,21 @@ export default function Sessions() {
       )}
 
       <section className="border border-white/10 bg-background-surface">
+        <div className="flex h-12 items-center justify-between border-b border-white/10 px-4">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">All sessions</span>
+            <span className="text-xs text-foreground-subtle">
+              {sessions.length} {sessions.length === 1 ? "session" : "sessions"}
+            </span>
+          </div>
+          <Link
+            to={paths.sessionsNew}
+            className="rounded-sm bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover"
+          >
+            New session
+          </Link>
+        </div>
+
         {loading ? (
           <p className="p-4 text-sm text-foreground-muted">Loading…</p>
         ) : sessions.length === 0 ? (
@@ -302,12 +284,15 @@ export default function Sessions() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-foreground-subtle">
+                <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-foreground-subtle">
                   <th className="px-4 py-2.5 font-medium">Name</th>
-                  <th className="px-4 py-2.5 font-medium">Starts</th>
-                  <th className="px-4 py-2.5 font-medium">Ends</th>
-                  <th className="px-4 py-2.5 font-medium">Late window</th>
-                  <th className="px-4 py-2.5 font-medium">State</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Starts</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Ends</th>
+                  <th className="px-4 py-2.5 text-right font-medium">People</th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Late window
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium">State</th>
                   <th className="px-4 py-2.5 text-right font-medium">
                     Actions
                   </th>
@@ -317,28 +302,31 @@ export default function Sessions() {
                 {sessions.map((s) => (
                   <tr
                     key={s.id}
-                    onClick={() => navigate(`/admin/sessions/${s.id}`)}
+                    onClick={() => navigate(paths.session(s.id))}
                     className="cursor-pointer border-b border-white/5 last:border-0 hover:bg-background-elevated"
                   >
                     <td className="px-4 py-3">
                       <Link
-                        to={`/admin/sessions/${s.id}`}
+                        to={paths.session(s.id)}
                         className="hover:underline"
                       >
                         {s.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-foreground-muted">
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
                       {new Date(s.started_at).toLocaleString()}
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-foreground-muted">
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
                       {s.ended_at ? new Date(s.ended_at).toLocaleString() : "—"}
                     </td>
-                    <td className="px-4 py-3 text-foreground-muted">
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
+                      {s.target_count ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">
                       {toMinutes(s.late_time)} min
                     </td>
                     <td
-                      className="px-4 py-3"
+                      className="px-4 py-3 text-right"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <select
@@ -356,16 +344,16 @@ export default function Sessions() {
                       className="px-4 py-3"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="flex justify-end gap-4">
+                      <div className="flex items-center justify-end gap-4">
                         <button
-                          onClick={() => openEdit(s)}
-                          className="cursor-pointer text-foreground-muted hover:text-foreground"
+                          onClick={() => setEditing(s)}
+                          className="cursor-pointer text-xs text-foreground-muted hover:text-foreground"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => setSessionToDelete(s)}
-                          className="cursor-pointer text-danger hover:underline"
+                          className="cursor-pointer text-xs text-danger hover:underline"
                         >
                           Delete
                         </button>
@@ -379,10 +367,10 @@ export default function Sessions() {
         )}
       </section>
 
-      {formOpen && (
-        <SessionForm
+      {editing && (
+        <SessionEditForm
           session={editing}
-          onClose={() => setFormOpen(false)}
+          onClose={() => setEditing(null)}
           onSaved={onSaved}
         />
       )}

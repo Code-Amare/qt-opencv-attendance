@@ -4,6 +4,7 @@ import {
   FiList,
   FiUserPlus,
   FiCalendar,
+  FiPlus,
   FiUser,
   FiEdit,
   FiSettings,
@@ -19,6 +20,8 @@ export const getTenantPaths = (slug) => {
     user: (id) => `${base}/users/${id}`,
     userEdit: (id) => `${base}/users/${id}/edit`,
     sessions: `${base}/sessions`,
+    sessionsNew: `${base}/sessions/new`,
+    session: (id) => `${base}/sessions/${id}`,
     profile: `${base}/profile`,
     profileEdit: `${base}/profile/edit`,
     settings: `${base}/settings`,
@@ -40,7 +43,14 @@ export const tenantDashboardNavigation = (slug) => {
       ],
     },
 
-    { name: "Sessions", path: paths.sessions, icon: FiCalendar },
+    {
+      name: "Sessions",
+      icon: FiCalendar,
+      children: [
+        { name: "All Sessions", path: paths.sessions, icon: FiList },
+        { name: "New Session", path: paths.sessionsNew, icon: FiPlus },
+      ],
+    },
 
     {
       name: "My Account",

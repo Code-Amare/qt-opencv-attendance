@@ -73,11 +73,17 @@ class SessionListCreateView(AttendanceBaseView):
             sessions = sessions.filter(status=wanted)
 
         return Response(
-            {"sessions": AttendanceSessionSerializer(sessions, many=True).data}
+            {
+                "sessions": AttendanceSessionSerializer(
+                    sessions, many=True, context={"request": request}
+                ).data
+            }
         )
 
     def post(self, request):
-        serializer = AttendanceSessionSerializer(data=request.data)
+        serializer = AttendanceSessionSerializer(
+            data=request.data, context={"request": request}
+        )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -101,7 +107,9 @@ class SessionDetailView(AttendanceBaseView):
 
         return Response(
             {
-                "session": AttendanceSessionSerializer(session).data,
+                "session": AttendanceSessionSerializer(
+                    session, context={"request": request}
+                ).data,
                 "summary": count_by_status(session.attendances),
             }
         )
@@ -143,7 +151,9 @@ class SessionStatusView(AttendanceBaseView):
             session.ended_at = now
         session.save(update_fields=["status", "ended_at"])
 
-        return Response(AttendanceSessionSerializer(session).data)
+        return Response(
+            AttendanceSessionSerializer(session, context={"request": request}).data
+        )
 
 
 # ------------------------------------------------------------- attendance

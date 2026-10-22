@@ -39,6 +39,12 @@ class AttendanceSession(models.Model):
         related_name="attendance_sessions",
     )
 
+    targets = models.ManyToManyField(
+        User,
+        related_name="targeted_sessions",
+        blank=True,
+    )
+
     class Meta:
         ordering = ["-started_at"]
         indexes = [models.Index(fields=["tenant", "-started_at"])]
