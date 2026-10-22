@@ -74,8 +74,20 @@ function formatUser(userData) {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(initialUser);
+  const [tenant, setTenant] = useState(null);
 
   const [loading, setLoading] = useState(true);
+
+  const applyUser = (userData) => {
+    const formatted = formatUser(userData);
+    setUser(formatted);
+    setTenant(formatted.tenant);
+  };
+
+  const clearUser = () => {
+    setUser(initialUser);
+    setTenant(null);
+  };
 
   const getUser = async () => {
     setLoading(true);
@@ -83,11 +95,9 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.get("/users/me/");
 
-      const userData = response.data.user;
-
-      setUser(formatUser(userData));
+      applyUser(response.data.user);
     } catch (error) {
-      setUser(initialUser);
+      clearUser();
       console.log(error.response?.data?.detail);
     } finally {
       setLoading(false);
@@ -99,17 +109,23 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = (userData) => {
-    setUser(formatUser(userData));
+    applyUser(userData);
 
     setLoading(false);
+  };
+
+  const updateTenant = (tenantData) => {
+    const updated = formatTenant(tenantData);
+
+    setTenant(updated);
+    setUser((prev) => ({ ...prev, tenant: updated }));
   };
 
   const updateProfile = async (payload) => {
     try {
       const response = await api.patch("/users/profile/update/", payload);
-      const updatedUser = response.data.user;
 
-      setUser(formatUser(updatedUser));
+      applyUser(response.data.user);
       return { success: true };
     } catch (error) {
       console.error(error.response);
@@ -129,7 +145,7 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error("Logout failed:", error);
     } finally {
-      setUser(initialUser);
+      clearUser();
 
       setLoading(false);
     }
@@ -139,11 +155,13 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider
       value={{
         user,
+        tenant,
         loading,
         login,
         logout,
         getUser,
         updateProfile,
+        updateTenant,
       }}
     >
       {children}

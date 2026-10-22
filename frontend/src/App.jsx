@@ -21,6 +21,9 @@ import ReleaseEdit from "./pages/admin/ReleaseEdit.jsx";
 import Release from "./pages/public/Release.jsx";
 import Profile from "./pages/admin/Profile.jsx";
 import ProfileEdit from "./pages/admin/ProfileEdit.jsx";
+import TenantRoute from "./components/TenantRoute.jsx";
+import TenantAdminDashboard from "./pages/tenant/TenantDashboard.jsx";
+import MemberDashboard from "./pages/user/MemberDashboard.jsx";
 
 const App = () => {
   return (
@@ -33,6 +36,17 @@ const App = () => {
       <Route path="/reset-password/:code" element={<ResetPassword />} />
       <Route path="/release" element={<Release />} />
       <Route path="/login/:code" element={<LoginViaLink />} />
+
+      <Route element={<TenantRoute />}>
+        <Route path="/:slug/dashboard" element={<MemberDashboard />} />
+      </Route>
+
+      <Route element={<TenantRoute adminOnly />}>
+        <Route
+          path="/:slug/admin/dashboard"
+          element={<TenantAdminDashboard />}
+        />
+      </Route>
 
       <Route element={<ProtectedRoute roles={["admin"]} />}>
         <Route element={<DashboardLayout />}>

@@ -14,7 +14,6 @@ urlpatterns = [
     path("attendance/", include("attendance.urls")),
     path("admin/", include("console.urls")),
     path("tenant/", include("tenant.urls")),
-    path("console/", include("console.urls")),
     path("site/", SiteSettingsView.as_view()),
     path("releases/latest/", LatestReleaseView.as_view()),
     path("releases/latest/download/", LatestDownloadView.as_view()),

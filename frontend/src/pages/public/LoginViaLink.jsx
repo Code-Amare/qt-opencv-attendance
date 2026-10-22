@@ -10,9 +10,9 @@ const LoginViaLink = () => {
   const { code } = useParams();
   const navigate = useNavigate();
   const { updatePageTitle } = usePageTitle();
-  const { login, getUser } = useAuth();
+  const { user, login, getUser } = useAuth();
 
-  const [status, setStatus] = useState("ready"); // ready | loading | done | invalid
+  const [status, setStatus] = useState("ready");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -21,10 +21,22 @@ const LoginViaLink = () => {
 
   const navigateAfterLogin = () => {
     if (user.isStaff) {
-      navigate("/admin/dashboard", { replace: true });
+      return navigate("/admin/dashboard", { replace: true });
     }
+
+    if (user.tenant && user.isTenantAdmin) {
+      return navigate(`/${user.tenant.slug}/admin/dashboard`, {
+        replace: true,
+      });
+    }
+
+    if (user.tenant) {
+      return navigate(`/${user.tenant.slug}/dashboard`, { replace: true });
+    }
+
     navigate("/dashboard", { replace: true });
   };
+
   const confirmLogin = async () => {
     if (status === "loading") return;
     setStatus("loading");
@@ -33,9 +45,8 @@ const LoginViaLink = () => {
         skipAuthRefresh: true,
       });
 
-      // put the user in AuthContext
       if (res.data?.user) login(res.data.user);
-      else await getUser(); // fallback: fetch /users/me/
+      else await getUser();
 
       setStatus("done");
     } catch (err) {
