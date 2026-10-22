@@ -1,86 +1,100 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import Alert from "../../components/Alert";
 import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
-import { usePageTitle } from "../../context/PageTitleContext";
+import { useAuth } from "../../context/AuthContext";
+import { useUpdatePageTitle } from "../../context/PageTitleContext";
+import { updateTitle } from "../../context/DashboardTitleContext";
+import { getTenantPaths } from "../../config/tenantDashboardNavigation";
 
-const inputClass =
-  "rounded-sm border border-white/10 bg-background-elevated px-3 py-2 text-sm " +
+const fieldClass =
+  "rounded-sm border border-white/10 bg-background-elevated px-3 py-2.5 text-sm " +
   "placeholder:text-foreground-subtle focus:border-primary-hover focus:outline-none";
 
+const fullName = (u) =>
+  `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || u.username || "—";
+
 export default function Users() {
-  const navigate = useNavigate();
-  const { updatePageTitle } = usePageTitle();
+  const { tenant } = useAuth();
+  const paths = getTenantPaths(tenant.slug);
+
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState("");
-  const [section, setSection] = useState("");
-  const [error, setError] = useState("");
+  const [face, setFace] = useState("");
   const [loading, setLoading] = useState(true);
-  const [userToDelete, setUserToDelete] = useState(null);
+  const [error, setError] = useState("");
+  const [toDelete, setToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    updatePageTitle("Users");
-  }, []);
+  updateTitle("Users");
+  useUpdatePageTitle("Users");
 
-  // reload when the filters change (debounced so we don't fire on every keystroke)
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      setError("");
+    const load = async () => {
       try {
-        const res = await api.get("/admin/users/", {
-          params: { search, section },
-        });
-        setUsers(res.data.users);
+        const res = await api.get("/tenant/users/");
+        setUsers(res.data.users ?? res.data.results ?? res.data);
       } catch (err) {
-        // the backend returns 404 when no user matches
-        if (err.response?.status === 404) {
-          setUsers([]);
-        } else {
-          setError(getErrorMessage(err, "Failed to load users."));
-        }
+        setError(getErrorMessage(err, "Failed to load users."));
       } finally {
         setLoading(false);
       }
-    }, 300);
+    };
 
-    return () => clearTimeout(timer);
-  }, [search, section]);
+    load();
+  }, []);
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users.filter((u) => {
+      const enrolled = Boolean(u.has_face ?? u.face_enrolled);
+      if (face === "enrolled" && !enrolled) return false;
+      if (face === "missing" && enrolled) return false;
+      if (!q) return true;
+      return (
+        fullName(u).toLowerCase().includes(q) ||
+        (u.email ?? "").toLowerCase().includes(q) ||
+        (u.section ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [users, search, face]);
 
   const onConfirmDelete = async () => {
     setDeleting(true);
-    setError("");
     try {
-      await api.delete(`/admin/users/${userToDelete.id}/`);
-      setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id));
+      await api.delete(`/tenant/users/${toDelete.id}/`);
+      setUsers((list) => list.filter((u) => u.id !== toDelete.id));
     } catch (err) {
       setError(getErrorMessage(err, "Failed to delete the user."));
     } finally {
       setDeleting(false);
-      setUserToDelete(null);
+      setToDelete(null);
     }
   };
 
-  const deleteName = userToDelete
-    ? `${userToDelete.first_name} ${userToDelete.last_name}`.trim() ||
-      userToDelete.email
-    : "";
+  if (loading) return <p className="p-6 text-foreground-muted">Loading…</p>;
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <div className="mt-2 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
-          <Link
-            to="/admin/users/new"
-            className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-          >
-            Add user
-          </Link>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, email or section"
+          className={fieldClass}
+        />
+        <select
+          value={face}
+          onChange={(e) => setFace(e.target.value)}
+          className={fieldClass}
+        >
+          <option value="">All face statuses</option>
+          <option value="enrolled">Face enrolled</option>
+          <option value="missing">No face yet</option>
+        </select>
       </div>
 
       {error && (
@@ -89,94 +103,92 @@ export default function Users() {
         </Alert>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <input
-          type="text"
-          placeholder="Search name or email"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={`${inputClass} w-full sm:w-72`}
-        />
-        <input
-          type="text"
-          placeholder="Section"
-          value={section}
-          onChange={(e) => setSection(e.target.value)}
-          className={`${inputClass} w-full sm:w-40`}
-        />
-      </div>
-
-      {/* Table */}
       <section className="border border-white/10 bg-background-surface">
-        {loading ? (
-          <p className="p-4 text-sm text-foreground-muted">Loading…</p>
-        ) : users.length === 0 ? (
+        <div className="flex h-12 items-center justify-between border-b border-white/10 px-4">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">All users</span>
+            <span className="text-xs text-foreground-subtle">
+              {visible.length} {visible.length === 1 ? "user" : "users"}
+            </span>
+          </div>
+          <Link
+            to={paths.usersNew}
+            className="rounded-sm bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-hover"
+          >
+            Add user
+          </Link>
+        </div>
+
+        {visible.length === 0 ? (
           <p className="p-4 text-sm text-foreground-muted">No users found.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-foreground-subtle">
+                <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wider text-foreground-subtle">
                   <th className="px-4 py-2.5 font-medium">Name</th>
-                  <th className="px-4 py-2.5 font-medium">Email</th>
-                  <th className="px-4 py-2.5 font-medium">Section</th>
-                  <th className="px-4 py-2.5 font-medium">Status</th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Section
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium">Face</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Status</th>
                   <th className="px-4 py-2.5 text-right font-medium">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
-                  <tr
-                    key={u.id}
-                    onClick={() => navigate(`/admin/users/${u.id}`)}
-                    className="cursor-pointer border-b border-white/5 last:border-0 hover:bg-background-elevated"
-                  >
-                    <td className="px-4 py-3">
-                      <Link
-                        to={`/admin/users/${u.id}`}
-                        className="hover:underline"
-                      >
-                        {`${u.first_name} ${u.last_name}`.trim() || "—"}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-foreground-muted">
-                      {u.email}
-                    </td>
-                    <td className="px-4 py-3 text-foreground-muted">
-                      {u.section || "—"}
-                    </td>
-                    <td
-                      className={`px-4 py-3 ${
-                        u.is_active ? "text-success" : "text-foreground-subtle"
-                      }`}
+                {visible.map((u) => {
+                  const enrolled = Boolean(u.has_face ?? u.face_enrolled);
+                  return (
+                    <tr
+                      key={u.id}
+                      className="border-b border-white/5 last:border-0 hover:bg-background-elevated"
                     >
-                      {u.is_active ? "Active" : "Inactive"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-4">
-                        <Link
-                          to={`/admin/users/${u.id}/edit`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-foreground-muted hover:text-foreground"
-                        >
-                          Edit
+                      <td className="px-4 py-3">
+                        <Link to={paths.user(u.id)} className="hover:underline">
+                          {fullName(u)}
                         </Link>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setUserToDelete(u);
-                          }}
-                          className="cursor-pointer text-danger hover:underline"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        <div className="text-xs text-foreground-subtle">
+                          {u.email}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right text-foreground-muted">
+                        {u.section || "—"}
+                      </td>
+                      <td
+                        className={`px-4 py-3 text-right ${
+                          enrolled ? "text-success" : "text-warning"
+                        }`}
+                      >
+                        {enrolled ? "Enrolled" : "Not enrolled"}
+                      </td>
+                      <td
+                        className={`px-4 py-3 text-right ${
+                          u.is_active ? "text-success" : "text-danger"
+                        }`}
+                      >
+                        {u.is_active ? "Active" : "Disabled"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-4">
+                          <Link
+                            to={paths.userEdit(u.id)}
+                            className="text-xs text-foreground-muted hover:text-foreground"
+                          >
+                            Edit
+                          </Link>
+                          <button
+                            onClick={() => setToDelete(u)}
+                            className="cursor-pointer text-xs text-danger hover:underline"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -184,13 +196,13 @@ export default function Users() {
       </section>
 
       <ConfirmModal
-        open={!!userToDelete}
+        open={!!toDelete}
         title="Delete user"
-        message={`Delete ${deleteName}? This cannot be undone.`}
+        message={`Delete ${toDelete ? fullName(toDelete) : ""}? Their attendance records will be removed too.`}
         confirmText="Delete"
         loading={deleting}
         onConfirm={onConfirmDelete}
-        onCancel={() => setUserToDelete(null)}
+        onCancel={() => setToDelete(null)}
       />
     </div>
   );

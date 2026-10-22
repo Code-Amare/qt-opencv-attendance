@@ -119,7 +119,9 @@ class TenantStatsView(TenantBase):
 
         recent = (
             self.sessions()
-            .annotate(present=count("present"), late=count("late"), absent=count("absent"))
+            .annotate(
+                present=count("present"), late=count("late"), absent=count("absent")
+            )
             .order_by("-started_at")[:7]
             .values("id", "name", "started_at", "status", "present", "late", "absent")
         )
@@ -129,7 +131,9 @@ class TenantStatsView(TenantBase):
                 "tenant": {"id": self.tenant.id, "name": self.tenant.name},
                 "total_users": members.count(),
                 "active_users": members.filter(is_active=True).count(),
-                "users_with_face": members.exclude(face_embeddings__isnull=True).count(),
+                "users_with_face": members.exclude(
+                    face_embeddings__isnull=True
+                ).count(),
                 "total_sessions": self.sessions().count(),
                 "attendance_by_status": {i["status"]: i["count"] for i in by_status},
                 "recent_sessions": list(recent),  # newest first
@@ -160,15 +164,13 @@ class MemberListCreateView(TenantBase):
 
     def post(self, request):
         email = str(request.data.get("email", "")).strip().lower()
-        password = request.data.get("password", "")
         username = str(request.data.get("username") or email).strip()
 
-        if not email or not password:
-            return error("email and password are required")
+        if not email:
+            return error("email is required")
 
         try:
             validate_email(email)
-            validate_password(password)
         except ValidationError as e:
             return error(" ".join(e.messages))
 
@@ -183,12 +185,8 @@ class MemberListCreateView(TenantBase):
 
         try:
             with transaction.atomic():
-                user = User.objects.create_user(
-                    username=username,
-                    email=email,
-                    password=password,
-                    tenant=self.tenant,  # forced, never taken from the request
-                )
+                user = User(username=username, email=email, tenant=self.tenant)
+                user.set_unusable_password()
                 for field in EDITABLE_FIELDS:
                     if field in request.data:
                         value = request.data[field]
@@ -196,7 +194,7 @@ class MemberListCreateView(TenantBase):
                             value = None
                         setattr(user, field, value)
                 if picture:
-                    user.profile_picture = picture  # CloudinaryField uploads on save
+                    user.profile_picture = picture
                 user.save()
         except CloudinaryError as e:
             return error(f"Image upload failed: {e}", status.HTTP_502_BAD_GATEWAY)
@@ -238,10 +236,15 @@ class MemberDetailView(TenantBase):
             return error("User not found", status.HTTP_404_NOT_FOUND)
 
         email = str(request.data.get("email", "")).strip()
-        if email and User.objects.filter(email__iexact=email).exclude(id=user.id).exists():
+        if (
+            email
+            and User.objects.filter(email__iexact=email).exclude(id=user.id).exists()
+        ):
             return error("A user with this email already exists")
 
-        if user.id == request.user.id and str(request.data.get("is_active", "")).lower() in (
+        if user.id == request.user.id and str(
+            request.data.get("is_active", "")
+        ).lower() in (
             "false",
             "0",
         ):
@@ -305,7 +308,9 @@ class SessionManageView(TenantBase):
         if not session:
             return error("Session not found", status.HTTP_404_NOT_FOUND)
 
-        serializer = AttendanceSessionSerializer(session, data=request.data, partial=True)
+        serializer = AttendanceSessionSerializer(
+            session, data=request.data, partial=True
+        )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -344,7 +349,9 @@ class SessionStateView(TenantBase):
                 missing = list(self.active_members().exclude(id__in=recorded))
                 Attendance.objects.bulk_create(
                     [
-                        Attendance(session=session, user=user, status=Attendance.Status.ABSENT)
+                        Attendance(
+                            session=session, user=user, status=Attendance.Status.ABSENT
+                        )
                         for user in missing
                     ],
                     ignore_conflicts=True,
@@ -436,7 +443,9 @@ class SessionReportView(TenantBase):
         styles = getSampleStyleSheet()
         story = [
             Paragraph(escape(session.name), styles["Title"]),
-            Paragraph(f"Attendance report · {escape(self.tenant.name)}", styles["Heading3"]),
+            Paragraph(
+                f"Attendance report · {escape(self.tenant.name)}", styles["Heading3"]
+            ),
             Spacer(1, 4 * mm),
         ]
 

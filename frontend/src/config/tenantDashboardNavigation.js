@@ -16,6 +16,8 @@ export const getTenantPaths = (slug) => {
     home: `${base}/dashboard`,
     users: `${base}/users`,
     usersNew: `${base}/users/new`,
+    user: (id) => `${base}/users/${id}`,
+    userEdit: (id) => `${base}/users/${id}/edit`,
     sessions: `${base}/sessions`,
     profile: `${base}/profile`,
     profileEdit: `${base}/profile/edit`,
