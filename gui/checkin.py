@@ -222,7 +222,7 @@ class SessionsPage(QWidget):
 
     async def fetch_recorded(self, session_id):
         async with self.window_.session.get(
-            f"attendance/sessions/{session_id}/"
+            f"attendance/sessions/{session_id}/attendance/"
         ) as resp:
             try:
                 data = await resp.json()
@@ -491,8 +491,8 @@ class RecordAttendancePage(CameraPage):
 
 class CheckInWindow(BaseWindow):
     PRODUCT_NAME = "FaceCall Check-in"
-    SET_ATTENDANCE = "attendance/"
-    DOWNLOAD_FACE_EMBEDDINGS = "users/face-embedding/download/"
+    SET_ATTENDANCE = "attendance/evaluate/"
+    DOWNLOAD_FACE_EMBEDDINGS = "tenant/face-embedding/download/"
 
     def __init__(self):
         super().__init__()
