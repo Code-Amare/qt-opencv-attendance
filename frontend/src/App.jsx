@@ -67,6 +67,11 @@ const App = () => {
           <Route path="/:slug/admin/sessions" element={<Sessions />} />
           <Route path="/:slug/admin/sessions/new" element={<SessionNew />} />
           <Route path="/:slug/admin/sessions/:id" element={<SessionDetail />} />
+
+          <Route
+            path="/:slug/admin/users/:userId/attendance"
+            element={<UserAttendanceHistory />}
+          />
           <Route
             path="/:slug/admin/sessions/:id/edit"
             element={<SessionEdit />}
