@@ -4,7 +4,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
-
+from django.core.paginator import EmptyPage, Paginator
 from utils.base import TenantAdminView
 from users.serializers import UserSerializer
 
@@ -260,5 +260,64 @@ class UserAttendanceDetailView(AttendanceBaseView):
             {
                 "user": UserSerializer(user).data,
                 "attendances": AttendanceSerializer(attendances, many=True).data,
+            }
+        )
+
+
+class UserAttendanceHistoryView(AttendanceBaseView):
+    """GET ?page=1&page_size=10&status=present|late|absent"""
+
+    MAX_PAGE_SIZE = 100
+
+    def get(self, request, user_id):
+        user = self.members().filter(id=user_id).first()
+        if not user:
+            return Response(
+                {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        all_records = Attendance.objects.filter(user=user, session__tenant=self.tenant)
+        records = all_records.select_related("session").order_by(
+            "-session__started_at", "-id"
+        )
+
+        wanted = request.query_params.get("status")
+        if wanted in Attendance.Status.values:
+            records = records.filter(status=wanted)
+
+        page_size = as_int(request.query_params.get("page_size")) or 10
+        page_size = max(1, min(page_size, self.MAX_PAGE_SIZE))
+        paginator = Paginator(records, page_size)
+
+        try:
+            page = paginator.page(as_int(request.query_params.get("page")) or 1)
+        except EmptyPage:
+            page = paginator.page(paginator.num_pages)
+
+        return Response(
+            {
+                "user": {
+                    "id": user.id,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                },
+                "summary": count_by_status(all_records),
+                "count": paginator.count,
+                "page": page.number,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "results": [
+                    {
+                        "id": r.id,
+                        "session_id": r.session_id,
+                        "session_name": r.session.name,
+                        "session_status": r.session.status,
+                        "started_at": r.session.started_at,
+                        "ended_at": r.session.ended_at,
+                        "status": r.status,
+                        "recorded_at": r.recorded_at,
+                    }
+                    for r in page.object_list
+                ],
             }
         )

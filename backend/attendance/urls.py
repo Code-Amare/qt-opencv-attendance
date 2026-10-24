@@ -7,6 +7,7 @@ from .views import (
     SessionListCreateView,
     SessionStatusView,
     UserAttendanceDetailView,
+    UserAttendanceHistoryView,
 )
 
 urlpatterns = [
@@ -16,4 +17,5 @@ urlpatterns = [
     path("sessions/<int:session_id>/attendance/", AttendanceListView.as_view()),
     path("evaluate/", EvaluateAttendanceView.as_view()),
     path("users/<int:user_id>/", UserAttendanceDetailView.as_view()),
+    path("users/<int:user_id>/history/", UserAttendanceHistoryView.as_view()),
 ]
