@@ -1,12 +1,11 @@
 import io
 from xml.sax.saxutils import escape
-
+import numpy as np
 from cloudinary.exceptions import Error as CloudinaryError
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
-from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.utils import timezone
@@ -17,7 +16,9 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from rest_framework import status
 from rest_framework.response import Response
-
+from datetime import datetime
+from django.db import IntegrityError, transaction
+from django.db.models.functions import Lower
 from attendance.models import Attendance, AttendanceSession
 from attendance.serializers import AttendanceSerializer, AttendanceSessionSerializer
 from users.serializers import AdminUserUpdateSerializer, UserSerializer
@@ -45,8 +46,13 @@ STATUS_COLORS = {
     "not set": colors.HexColor("#6B7280"),
 }
 
-
-# ---------------------------------------------------------------- helpers
+MAX_BULK_USERS = 500
+BULK_LIMITS = {
+    "first_name": 150,
+    "last_name": 150,
+    "phone_number": 20,
+    "section": 50,
+}
 
 
 def error(message, code=status.HTTP_400_BAD_REQUEST):
@@ -93,9 +99,6 @@ class TenantBase(TenantAdminView):
         return self.all_members().filter(is_active=True)
 
 
-# ---------------------------------------------------------------- dashboard
-
-
 class TenantStatsView(TenantBase):
     def get(self, request):
         members = self.all_members()
@@ -139,9 +142,6 @@ class TenantStatsView(TenantBase):
                 "recent_sessions": list(recent),  # newest first
             }
         )
-
-
-# ---------------------------------------------------------------- members
 
 
 class MemberListCreateView(TenantBase):
@@ -299,9 +299,6 @@ class MemberTableView(TenantBase):
         return Response({"users": users})
 
 
-# ---------------------------------------------------------------- sessions
-
-
 class SessionManageView(TenantBase):
     def patch(self, request, session_id):
         session = self.get_session(session_id)
@@ -397,9 +394,6 @@ class AttendanceOverrideView(TenantBase):
             },
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
-
-
-# ---------------------------------------------------------------- report
 
 
 class SessionReportView(TenantBase):
@@ -513,3 +507,186 @@ class SessionReportView(TenantBase):
             f'attachment; filename="session-{session.id}-report.pdf"'
         )
         return response
+
+
+class MemberBulkCreateView(TenantBase):
+    def post(self, request):
+        rows = request.data.get("users")
+
+        if not isinstance(rows, list) or not rows:
+            return error("users must be a non-empty list")
+        if len(rows) > MAX_BULK_USERS:
+            return error(f"You can add at most {MAX_BULK_USERS} users at a time")
+
+        problems = []
+        candidates = []
+        seen = {}
+
+        for index, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                problems.append({"row": index, "error": "Invalid row"})
+                continue
+
+            line = row.get("line") if isinstance(row.get("line"), int) else index
+            email = str(row.get("email", "")).strip().lower()
+
+            try:
+                validate_email(email)
+            except ValidationError:
+                problems.append({"row": line, "error": "Email is not valid"})
+                continue
+
+            if email in seen:
+                problems.append(
+                    {"row": line, "error": f"Same email as row {seen[email]}"}
+                )
+                continue
+            seen[email] = line
+
+            item = {"line": line, "email": email}
+            bad = None
+
+            for field, limit in BULK_LIMITS.items():
+                value = str(row.get(field, "") or "").strip()
+                if len(value) > limit:
+                    bad = f"{field.replace('_', ' ')} is too long"
+                    break
+                item[field] = value
+
+            if bad:
+                problems.append({"row": line, "error": bad})
+                continue
+
+            dob = str(row.get("date_of_birth", "") or "").strip()
+            item["date_of_birth"] = None
+            if dob:
+                try:
+                    item["date_of_birth"] = datetime.strptime(dob, "%Y-%m-%d").date()
+                except ValueError:
+                    problems.append(
+                        {"row": line, "error": "Date of birth must be YYYY-MM-DD"}
+                    )
+                    continue
+
+            candidates.append(item)
+
+        emails = [item["email"] for item in candidates]
+        taken = {
+            value
+            for pair in User.objects.annotate(
+                lowered_email=Lower("email"), lowered_username=Lower("username")
+            )
+            .filter(Q(lowered_email__in=emails) | Q(lowered_username__in=emails))
+            .values_list("lowered_email", "lowered_username")
+            for value in pair
+        }
+
+        accepted = []
+        for item in candidates:
+            if item["email"] in taken:
+                problems.append(
+                    {
+                        "row": item["line"],
+                        "error": "A user with this email already exists",
+                    }
+                )
+            else:
+                accepted.append(item)
+
+        if problems:
+            problems.sort(key=lambda p: p["row"])
+            return Response(
+                {
+                    "error": "Some rows could not be added. Nothing was created.",
+                    "errors": problems,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        users = []
+        for item in accepted:
+            user = User(
+                username=item["email"],
+                email=item["email"],
+                first_name=item["first_name"],
+                last_name=item["last_name"],
+                phone_number=item["phone_number"] or None,
+                section=item["section"] or None,
+                date_of_birth=item["date_of_birth"],
+                tenant=self.tenant,
+            )
+            user.set_unusable_password()
+            users.append(user)
+
+        try:
+            with transaction.atomic():
+                User.objects.bulk_create(users)
+        except IntegrityError:
+            return error("Some users already exist. Please try again.")
+
+        return Response(
+            {"detail": "Users created", "created": len(users)},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AddFaceEmbeddingView(TenantAdminView):
+
+    def post(self, request, user_id):
+        tenant = request.user.tenant
+        user = User.objects.filter(id=user_id, tenant=tenant).first()
+
+        if not user:
+            return Response(
+                {"error": "User not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            emb = np.asarray(request.data.get("face_embedding"), dtype=np.float32)
+        except (TypeError, ValueError):
+            return Response({"error": "Invalid embedding."}, status=400)
+
+        if emb.shape != (512,) or not np.isfinite(emb).all():
+            return Response(
+                {"error": "Embedding must be 512 finite numbers."}, status=400
+            )
+
+        norm = np.linalg.norm(emb)
+        if norm < 1e-12:
+            return Response({"error": "Embedding is empty."}, status=400)
+
+        user.set_embeddings(emb / norm)  # replaces any existing embedding (re-enroll)
+        user.embeddings_updated_at = timezone.now()
+        user.save(update_fields=["face_embeddings", "embeddings_updated_at"])
+
+        return Response({"detail": "Face embedding saved."})
+
+
+class DownloadFaceEmbeddingsView(TenantAdminView):
+
+    def get(self, request):
+        users = User.objects.filter(
+            tenant=request.user.tenant, face_embeddings__isnull=False
+        ).only("id", "face_embeddings")
+
+        embeddings, labels = [], []
+        for u in users:
+            arr = u.get_embeddings()
+            if len(arr):
+                embeddings.append(arr)
+                labels.extend([u.id] * len(arr))
+
+        embeddings = (
+            np.concatenate(embeddings)
+            if embeddings
+            else np.empty((0, 512), dtype=np.float32)
+        )
+        labels = np.asarray(labels, dtype=np.int32)
+
+        buf = io.BytesIO()
+        np.savez_compressed(buf, embeddings=embeddings, labels=labels)
+
+        resp = HttpResponse(buf.getvalue(), content_type="application/octet-stream")
+        resp["Content-Disposition"] = 'attachment; filename="face_embeddings.npz"'
+        return resp

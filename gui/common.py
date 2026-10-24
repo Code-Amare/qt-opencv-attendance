@@ -564,7 +564,7 @@ class AuthContext:
     def _finish(self, data, session, require_staff):
         if "tokens" not in data or "user" not in data:
             return "error", data.get("error") or "Login failed"
-        if require_staff and not data["user"].get("is_staff"):
+        if require_staff and not data["user"].get("is_tenant_admin"):
             return "error", "This app is only for admin users"
         self.add_tokens(data, session)
         return "ok", ""
@@ -807,8 +807,8 @@ class BaseWindow(QMainWindow):
     Flow: login -> camera select page -> on_login_successful()."""
 
     PRODUCT_NAME = "FaceCall"
-    # BASE_URL = "https://localhost:8000/api/"
-    BASE_URL = "https://facecall-backend.up.railway.app/api/"
+    BASE_URL = "https://localhost:8000/api/"
+    # BASE_URL = "https://facecall-backend.up.railway.app/api/"
     SIMILARITY_THRESHOLD = 0.50
     CAMERA_INDEX = 1  # default; overwritten by the camera select page
     STREAK_THRESHOLD = 20

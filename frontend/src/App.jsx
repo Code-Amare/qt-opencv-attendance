@@ -26,6 +26,8 @@ import UserDetail from "./pages/tenant/UserDetail.jsx";
 import UserEdit from "./pages/tenant/UserEdit.jsx";
 import MemberDashboard from "./pages/user/MemberDashboard.jsx";
 import SessionNew from "./pages/tenant/SessionNew.jsx";
+import UsersBulk from "./pages/tenant/UsersBulk.jsx";
+import SessionEdit from "./pages/tenant/SessionEdit.jsx";
 
 const App = () => {
   return (
@@ -60,13 +62,15 @@ const App = () => {
           <Route path="/:slug/admin/users/new" element={<UserNew />} />
           <Route path="/:slug/admin/users/:id" element={<UserDetail />} />
           <Route path="/:slug/admin/users/:id/edit" element={<UserEdit />} />
-
-          <Route path="/:slug/admin/sessions" element={<Sessions />} />
-          <Route path="/:slug/admin/sessions/:id" element={<SessionDetail />} />
+          <Route path="/:slug/admin/users/bulk" element={<UsersBulk />} />
 
           <Route path="/:slug/admin/sessions" element={<Sessions />} />
           <Route path="/:slug/admin/sessions/new" element={<SessionNew />} />
           <Route path="/:slug/admin/sessions/:id" element={<SessionDetail />} />
+          <Route
+            path="/:slug/admin/sessions/:id/edit"
+            element={<SessionEdit />}
+          />
         </Route>
       </Route>
 

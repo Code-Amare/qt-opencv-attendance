@@ -17,6 +17,7 @@ export const getTenantPaths = (slug) => {
     home: `${base}/dashboard`,
     users: `${base}/users`,
     usersNew: `${base}/users/new`,
+    usersBulk: `${base}/users/bulk`,
     user: (id) => `${base}/users/${id}`,
     userEdit: (id) => `${base}/users/${id}/edit`,
     sessions: `${base}/sessions`,
@@ -25,6 +26,7 @@ export const getTenantPaths = (slug) => {
     profile: `${base}/profile`,
     profileEdit: `${base}/profile/edit`,
     settings: `${base}/settings`,
+    sessionEdit: (id) => `${base}/sessions/${id}/edit`,
   };
 };
 
@@ -40,6 +42,7 @@ export const tenantDashboardNavigation = (slug) => {
       children: [
         { name: "All Users", path: paths.users, icon: FiList },
         { name: "Add User", path: paths.usersNew, icon: FiUserPlus },
+        { name: "Add User Bulk", path: paths.usersBulk, icon: FiUserPlus },
       ],
     },
 

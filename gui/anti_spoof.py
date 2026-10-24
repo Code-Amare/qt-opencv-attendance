@@ -6,7 +6,7 @@ from utils import resource_path
 
 SESSION = ort.InferenceSession(
     str(resource_path("models/MiniFASNetV2.onnx")),
-    providers=["CPUExecutionProvider"],
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
 )
 INPUT_NAME = SESSION.get_inputs()[0].name
 

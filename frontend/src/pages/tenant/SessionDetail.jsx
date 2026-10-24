@@ -53,7 +53,7 @@ export default function SessionDetail() {
 
   const load = async () => {
     try {
-      const res = await api.get(`/attendance/session/${id}/`);
+      const res = await api.get(`/attendance/sessions/${id}/`);
       // this endpoint answers 200 with an "error" key for an unknown session
       if (res.data.error) {
         setError(res.data.error);

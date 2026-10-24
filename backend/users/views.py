@@ -206,6 +206,12 @@ class GUILoginView(APIView):
         if error:
             return error
 
+        if not user.is_tenant_admin:
+            return Response(
+                {"error": "You must be a tenant admin"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
         login_code = EmailLoginCode.objects.filter(user=user).first()
 
         if login_code and not login_code.is_expired():
@@ -279,7 +285,6 @@ class VerifyUserView(APIView):
 
 class LoginViaLinkView(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = []
 
     def post(self, request, code):
         login_link = EmailLoginLink.objects.filter(code=code).first()
@@ -436,7 +441,8 @@ class ForgotPasswordRequestView(APIView):
 
         try:
             send_forgot_password_email(user, new_request.code)
-        except Exception:
+        except Exception as e:
+            print(e)
             logger.exception("Forgot-password email failed | user=%s", user.pk)
             new_request.delete()
             return Response(

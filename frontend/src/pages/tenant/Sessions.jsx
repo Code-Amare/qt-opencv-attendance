@@ -9,24 +9,10 @@ import { useUpdatePageTitle } from "../../context/PageTitleContext";
 import { updateTitle } from "../../context/DashboardTitleContext";
 import { getTenantPaths } from "../../config/tenantDashboardNavigation";
 
-const fieldClass =
-  "w-full rounded-sm border border-white/10 bg-background-elevated px-3 py-2.5 text-sm " +
-  "placeholder:text-foreground-subtle focus:border-primary-hover focus:outline-none";
-
-const labelClass = "mb-1.5 block text-sm text-foreground-muted";
-
 const statusStyle = {
   active: "text-success",
   completed: "text-info",
   cancelled: "text-danger",
-};
-
-const pad = (n) => String(n).padStart(2, "0");
-
-const toLocalInput = (iso) => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
 const toMinutes = (duration) => {
@@ -34,150 +20,6 @@ const toMinutes = (duration) => {
   if (!m) return 10;
   return Number(m[1] ?? 0) * 1440 + Number(m[2]) * 60 + Number(m[3]);
 };
-
-function SessionEditForm({ session, onClose, onSaved }) {
-  const [form, setForm] = useState({
-    name: session.name,
-    started_at: toLocalInput(session.started_at),
-    ended_at: toLocalInput(session.ended_at),
-    late_minutes: toMinutes(session.late_time),
-  });
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const onChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    if (error) setError("");
-  };
-
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-
-    if (!form.name.trim() || !form.started_at) {
-      return setError("Name and start time are required.");
-    }
-    if (form.ended_at && new Date(form.ended_at) <= new Date(form.started_at)) {
-      return setError("The end time must be after the start time.");
-    }
-
-    const minutes = Math.max(0, Number(form.late_minutes) || 0);
-    const payload = {
-      name: form.name.trim(),
-      started_at: new Date(form.started_at).toISOString(),
-      ended_at: form.ended_at ? new Date(form.ended_at).toISOString() : null,
-      late_time: `${Math.floor(minutes / 60)}:${pad(minutes % 60)}:00`,
-    };
-
-    setSaving(true);
-    try {
-      await api.patch(`/tenant/sessions/${session.id}/`, payload);
-      onSaved();
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to save the session."));
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-      onClick={() => !saving && onClose()}
-    >
-      <form
-        onSubmit={onSubmit}
-        noValidate
-        role="dialog"
-        aria-modal="true"
-        className="w-full max-w-md space-y-4 border border-white/10 bg-background-surface p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold tracking-tight">Edit session</h2>
-
-        {error && (
-          <Alert variant="error" title="Error" onClose={() => setError("")}>
-            {error}
-          </Alert>
-        )}
-
-        <div>
-          <label htmlFor="name" className={labelClass}>
-            Name
-          </label>
-          <input
-            id="name"
-            name="name"
-            value={form.name}
-            onChange={onChange}
-            className={fieldClass}
-          />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="started_at" className={labelClass}>
-              Starts
-            </label>
-            <input
-              id="started_at"
-              type="datetime-local"
-              name="started_at"
-              value={form.started_at}
-              onChange={onChange}
-              className={fieldClass}
-            />
-          </div>
-          <div>
-            <label htmlFor="ended_at" className={labelClass}>
-              Ends
-            </label>
-            <input
-              id="ended_at"
-              type="datetime-local"
-              name="ended_at"
-              value={form.ended_at}
-              onChange={onChange}
-              className={fieldClass}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label htmlFor="late_minutes" className={labelClass}>
-            Late window (minutes after the end time)
-          </label>
-          <input
-            id="late_minutes"
-            type="number"
-            min="0"
-            name="late_minutes"
-            value={form.late_minutes}
-            onChange={onChange}
-            className={`${fieldClass} sm:w-40`}
-          />
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="cursor-pointer rounded-sm border border-white/10 px-4 py-2 text-sm hover:bg-background-elevated disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="cursor-pointer rounded-sm bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? "Saving…" : "Save changes"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
 
 export default function Sessions() {
   const navigate = useNavigate();
@@ -187,7 +29,6 @@ export default function Sessions() {
   const [sessions, setSessions] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null);
   const [changingId, setChangingId] = useState(null);
   const [sessionToDelete, setSessionToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -214,11 +55,6 @@ export default function Sessions() {
   useEffect(() => {
     load();
   }, []);
-
-  const onSaved = () => {
-    setEditing(null);
-    load();
-  };
 
   const onChangeState = async (session, status) => {
     setChangingId(session.id);
@@ -345,12 +181,12 @@ export default function Sessions() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center justify-end gap-4">
-                        <button
-                          onClick={() => setEditing(s)}
-                          className="cursor-pointer text-xs text-foreground-muted hover:text-foreground"
+                        <Link
+                          to={paths.sessionEdit(s.id)}
+                          className="text-xs text-foreground-muted hover:text-foreground"
                         >
                           Edit
-                        </button>
+                        </Link>
                         <button
                           onClick={() => setSessionToDelete(s)}
                           className="cursor-pointer text-xs text-danger hover:underline"
@@ -366,14 +202,6 @@ export default function Sessions() {
           </div>
         )}
       </section>
-
-      {editing && (
-        <SessionEditForm
-          session={editing}
-          onClose={() => setEditing(null)}
-          onSaved={onSaved}
-        />
-      )}
 
       <ConfirmModal
         open={!!sessionToDelete}

@@ -9,7 +9,6 @@ from django.db.models import Q
 from tenant.serializers import TenantSerializer
 
 
-
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -35,6 +34,7 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile_picture = serializers.SerializerMethodField()
+    has_face = serializers.SerializerMethodField()
     tenant = TenantSerializer()
 
     class Meta:
@@ -55,6 +55,7 @@ class UserSerializer(serializers.ModelSerializer):
             "is_active",
             "tenant",
             "is_tenant_admin",
+            "has_face",
         ]
         read_only_fields = [
             "id",
@@ -65,6 +66,11 @@ class UserSerializer(serializers.ModelSerializer):
     def get_profile_picture(self, obj):
         if obj.profile_picture:
             return obj.profile_picture.url
+        return None
+
+    def get_has_face(self, obj):
+        if obj.face_embeddings:
+            return True
         return None
 
 

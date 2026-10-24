@@ -5,7 +5,7 @@ from utils.send_mail import send_email
 
 def send_verification_code_email(user, code):
     html_content = render_to_string(
-        "templates/users/verify_email.html",
+        "users/verify_email.html",
         {
             "user": user,
             "code": code,

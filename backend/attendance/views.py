@@ -98,6 +98,8 @@ class SessionListCreateView(AttendanceBaseView):
 
 
 class SessionDetailView(AttendanceBaseView):
+    print("hi")
+
     def get(self, request, session_id):
         session = self.get_session(session_id)
         if not session:

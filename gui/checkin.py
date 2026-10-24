@@ -204,7 +204,7 @@ class SessionsPage(QWidget):
 
     # ---------- API ----------
     async def fetch_sessions(self):
-        async with self.window_.session.get("admin/sessions/") as resp:
+        async with self.window_.session.get("attendance/sessions/") as resp:
             if resp.status == 404:  # the backend answers 404 when there are none
                 return []
             try:
@@ -222,7 +222,7 @@ class SessionsPage(QWidget):
 
     async def fetch_recorded(self, session_id):
         async with self.window_.session.get(
-            f"attendance/session/{session_id}/"
+            f"attendance/sessions/{session_id}/"
         ) as resp:
             try:
                 data = await resp.json()

@@ -597,8 +597,8 @@ class CheckEmbeddingPage(CameraPage):
 
 class EnrollWindow(BaseWindow):
     PRODUCT_NAME = "FaceCall Enroll"
-    USERS_TABLE_DATA_URL = "admin/users/gui-table/"
-    DOWNLOAD_FACE_EMBEDDINGS = "users/face-embedding/download/"
+    USERS_TABLE_DATA_URL = "tenant/users-table/"
+    DOWNLOAD_FACE_EMBEDDINGS = "tenant/face-embedding/download/"
 
     def __init__(self):
         super().__init__()
@@ -735,7 +735,7 @@ class EnrollWindow(BaseWindow):
     async def save_embedding(self, user_id, embedding):
         try:
             async with self.session.post(
-                f"users/face-embedding/add/{user_id}/",
+                f"tenant/face-embedding/add/{user_id}/",
                 json={"face_embedding": embedding.tolist()},
             ) as resp:
                 try:
