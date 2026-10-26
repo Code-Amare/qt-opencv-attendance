@@ -27,6 +27,7 @@ export const getTenantPaths = (slug) => {
     profileEdit: `${base}/profile/edit`,
     settings: `${base}/settings`,
     sessionEdit: (id) => `${base}/sessions/${id}/edit`,
+    userAttendance: (id) => `${base}/users/${id}/attendance`,
   };
 };
 

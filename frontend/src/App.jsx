@@ -28,6 +28,7 @@ import MemberDashboard from "./pages/user/MemberDashboard.jsx";
 import SessionNew from "./pages/tenant/SessionNew.jsx";
 import UsersBulk from "./pages/tenant/UsersBulk.jsx";
 import SessionEdit from "./pages/tenant/SessionEdit.jsx";
+import UserAttendanceHistory from "./pages/tenant/UserAttendanceHistory.jsx";
 
 const App = () => {
   return (

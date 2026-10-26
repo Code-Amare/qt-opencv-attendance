@@ -4,8 +4,10 @@ import Alert from "../../components/Alert";
 import ConfirmModal from "../../components/ConfirmModal";
 import api from "../../lib/axios";
 import { getErrorMessage } from "../../lib/errors";
+import { useAuth } from "../../context/AuthContext";
 import { useUpdatePageTitle } from "../../context/PageTitleContext";
 import { updateTitle } from "../../context/DashboardTitleContext";
+import { getTenantPaths } from "../../config/tenantDashboardNavigation";
 
 const selectClass =
   "cursor-pointer rounded-md border border-white/10 bg-background-elevated px-3 py-2 " +
@@ -43,6 +45,8 @@ const filters = [["all", "All"], ...cards.map(([k, l]) => [k, l])];
 export default function SessionDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { tenant } = useAuth();
+  const paths = getTenantPaths(tenant.slug);
 
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -169,8 +173,8 @@ export default function SessionDetail() {
           {error || "Session not found."}
         </Alert>
         <Link
-          to="/admin/sessions"
-          className="text-sm text-foreground-muted hover:text-foreground"
+          to={paths.sessions}
+          className="inline-block text-sm text-foreground-muted hover:text-foreground"
         >
           ← Back to sessions
         </Link>
@@ -182,12 +186,12 @@ export default function SessionDetail() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <button
-        onClick={() => navigate(-1)}
-        className="cursor-pointer text-sm text-foreground-muted hover:text-foreground"
+      <Link
+        to={paths.sessions}
+        className="inline-block text-sm text-foreground-muted hover:text-foreground"
       >
-        ← Go back
-      </button>
+        ← Back to sessions
+      </Link>
 
       {/* Header */}
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-white/10 bg-background-surface p-6">
@@ -210,6 +214,12 @@ export default function SessionDetail() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          <Link
+            to={paths.sessionEdit(id)}
+            className="rounded-md border border-white/10 px-4 py-2 text-sm text-foreground hover:bg-background-elevated"
+          >
+            Edit
+          </Link>
           <button
             onClick={onDownload}
             disabled={downloading}
@@ -294,9 +304,7 @@ export default function SessionDetail() {
                 <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-foreground-subtle">
                   <th className="px-5 py-3 font-medium">Name</th>
                   <th className="px-5 py-3 font-medium">Status</th>
-                  <th className="px-5 py-3 text-right font-medium">
-                    Set status
-                  </th>
+                  <th className="px-5 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -322,22 +330,30 @@ export default function SessionDetail() {
                           {a.status ?? "Not set"}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-right">
-                        <select
-                          value={a.status ?? ""}
-                          disabled={savingId === a.user_id}
-                          onChange={(e) =>
-                            onOverride(a.user_id, e.target.value)
-                          }
-                          className={`${selectClass} py-1`}
-                        >
-                          <option value="" disabled>
-                            Not set
-                          </option>
-                          <option value="present">Present</option>
-                          <option value="late">Late</option>
-                          <option value="absent">Absent</option>
-                        </select>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-end gap-3">
+                          <Link
+                            to={paths.userAttendance(a.user_id)}
+                            className="text-xs text-foreground-muted hover:text-foreground"
+                          >
+                            History
+                          </Link>
+                          <select
+                            value={a.status ?? ""}
+                            disabled={savingId === a.user_id}
+                            onChange={(e) =>
+                              onOverride(a.user_id, e.target.value)
+                            }
+                            className={`${selectClass} py-1`}
+                          >
+                            <option value="" disabled>
+                              Not set
+                            </option>
+                            <option value="present">Present</option>
+                            <option value="late">Late</option>
+                            <option value="absent">Absent</option>
+                          </select>
+                        </div>
                       </td>
                     </tr>
                   );
